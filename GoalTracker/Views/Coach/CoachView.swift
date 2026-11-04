@@ -2,20 +2,24 @@ import SwiftData
 import SwiftUI
 
 struct CoachView: View {
-    let thenPhoto: ProgressPhoto?
-    let nowPhoto: ProgressPhoto?
-    /// Saves a freshly taken progress photo, which then becomes `nowPhoto`.
-    let onNewNowPhoto: (UIImage) -> Void
+    /// Shared with the Transform tab so the coach always reviews the same THEN/NOW pair shown there.
+    @Binding var thenPhotoID: PersistentIdentifier?
+    @Binding var nowPhotoID: PersistentIdentifier?
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(HealthKitManager.self) private var health
     @Query private var profiles: [GoalProfile]
     @Query(sort: \CoachCritique.date, order: .reverse) private var critiques: [CoachCritique]
+    @Query(sort: \ProgressPhoto.date) private var photos: [ProgressPhoto]
 
     @State private var viewModel = CoachViewModel()
     @State private var keyDraft = ""
     @State private var isShowingCamera = false
+    @State private var photoSaver = TransformationViewModel()
+
+    private var thenPhoto: ProgressPhoto? { photos.thenPhoto(selected: thenPhotoID) }
+    private var nowPhoto: ProgressPhoto? { photos.nowPhoto(selected: nowPhotoID) }
     @AppStorage("coachTone") private var toneRaw = CoachTone.drillSergeant.rawValue
 
     private var tone: Binding<CoachTone> {
@@ -50,7 +54,10 @@ struct CoachView: View {
             .background(ThemedBackground())
             .navigationTitle("AI Coach")
             .fullScreenCover(isPresented: $isShowingCamera) {
-                TimedCameraView(ghostImageData: thenPhoto?.imageData, onCapture: onNewNowPhoto)
+                TimedCameraView(ghostImageData: thenPhoto?.imageData) { image in
+                    photoSaver.saveCapturedPhoto(image, asBaseline: false, weight: health.latestWeightLbs, existing: photos, context: context)
+                    nowPhotoID = nil // the new photo is now the newest, so it becomes NOW
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -76,16 +83,16 @@ struct CoachView: View {
                 }
                 .frame(maxHeight: 200)
 
-                if CameraController.isAvailable {
-                    Button {
-                        isShowingCamera = true
-                    } label: {
-                        Label("Take New NOW Photo", systemImage: "camera.fill")
-                            .frame(maxWidth: .infinity)
+                HStack {
+                    Text("Change THEN or NOW on the Transform screen.")
+                    Spacer()
+                    if CameraController.isAvailable {
+                        Button("New NOW photo", systemImage: "camera") { isShowingCamera = true }
+                            .disabled(viewModel.isLoading)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(viewModel.isLoading)
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
                 Button {
                     guard let thenPhoto, let nowPhoto else { return }

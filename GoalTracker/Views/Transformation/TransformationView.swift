@@ -33,12 +33,8 @@ struct TransformationView: View {
     @State private var isShowingCoach = false
 
     private var baseline: ProgressPhoto? { photos.first(where: \.isBaseline) }
-    private var latest: ProgressPhoto? {
-        photos.first(where: { $0.persistentModelID == nowPhotoID }) ?? photos.last(where: { !$0.isBaseline })
-    }
-    private var thenPhoto: ProgressPhoto? {
-        photos.first(where: { $0.persistentModelID == thenPhotoID }) ?? baseline
-    }
+    private var latest: ProgressPhoto? { photos.nowPhoto(selected: nowPhotoID) }
+    private var thenPhoto: ProgressPhoto? { photos.thenPhoto(selected: thenPhotoID) }
 
     var body: some View {
         NavigationStack {
@@ -90,7 +86,7 @@ struct TransformationView: View {
                 Button("AI Coach", systemImage: "flame.fill") { isShowingCoach = true }
             }
             .sheet(isPresented: $isShowingCoach) {
-                CoachView(thenPhoto: thenPhoto, nowPhoto: latest) { image in saveCaptured(image, into: .progress) }
+                CoachView(thenPhotoID: $thenPhotoID, nowPhotoID: $nowPhotoID)
             }
             .overlay {
                 if viewModel.isImporting {

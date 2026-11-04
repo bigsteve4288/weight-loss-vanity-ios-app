@@ -1,6 +1,18 @@
 import Foundation
 import SwiftData
 
+extension [ProgressPhoto] {
+    /// The chosen THEN photo, falling back to the baseline. Expects photos sorted oldest first.
+    func thenPhoto(selected id: PersistentIdentifier?) -> ProgressPhoto? {
+        first { $0.persistentModelID == id } ?? first(where: \.isBaseline)
+    }
+
+    /// The chosen NOW photo, falling back to the newest non-baseline photo. Expects photos sorted oldest first.
+    func nowPhoto(selected id: PersistentIdentifier?) -> ProgressPhoto? {
+        first { $0.persistentModelID == id } ?? last { !$0.isBaseline }
+    }
+}
+
 @Model
 final class ProgressPhoto {
     var date: Date
