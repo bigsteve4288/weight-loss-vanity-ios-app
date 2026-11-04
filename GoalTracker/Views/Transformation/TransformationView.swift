@@ -17,12 +17,16 @@ struct TransformationView: View {
     @State private var mode = CompareMode.sideBySide
     @State private var overlayAmount = 0.5
     @State private var thenPhotoID: PersistentIdentifier?
+    @State private var nowPhotoID: PersistentIdentifier?
+    @State private var photoPendingDelete: ProgressPhoto?
     @State private var baselineItem: PhotosPickerItem?
     @State private var progressItem: PhotosPickerItem?
     @State private var isShowingCoach = false
 
     private var baseline: ProgressPhoto? { photos.first(where: \.isBaseline) }
-    private var latest: ProgressPhoto? { photos.last(where: { !$0.isBaseline }) }
+    private var latest: ProgressPhoto? {
+        photos.first(where: { $0.persistentModelID == nowPhotoID }) ?? photos.last(where: { !$0.isBaseline })
+    }
     private var thenPhoto: ProgressPhoto? {
         photos.first(where: { $0.persistentModelID == thenPhotoID }) ?? baseline
     }
@@ -123,37 +127,67 @@ struct TransformationView: View {
 
     private var photoStrip: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CardHeader(title: "Choose the Then photo", systemImage: "clock.arrow.circlepath")
+            CardHeader(title: "Your Photos", systemImage: "photo.stack")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(photos) { photo in
-                        Button {
-                            thenPhotoID = photo.persistentModelID
+                    ForEach(photos.reversed()) { photo in
+                        Menu {
+                            Button("Use as THEN", systemImage: "clock.arrow.circlepath") { thenPhotoID = photo.persistentModelID }
+                            Button("Use as NOW", systemImage: "camera") { nowPhotoID = photo.persistentModelID }
+                            if !photo.isBaseline {
+                                Button("Make Baseline", systemImage: "star") { viewModel.makeBaseline(photo, among: photos) }
+                            }
+                            Divider()
+                            Button("Delete Photo", systemImage: "trash", role: .destructive) { photoPendingDelete = photo }
                         } label: {
-                            PhotoImage(photo: photo)
-                                .frame(width: 64, height: 86)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .strokeBorder(photo == thenPhoto ? Theme.gold : .clear, lineWidth: 2)
-                                }
-                                .overlay(alignment: .topTrailing) {
-                                    if photo.isBaseline {
-                                        Image(systemName: "star.fill").font(.caption2).foregroundStyle(Theme.gold).padding(4)
-                                    }
-                                }
-                        }
-                        .contextMenu {
-                            Button("Set as Baseline", systemImage: "star") { viewModel.makeBaseline(photo, among: photos) }
-                            Button("Delete", systemImage: "trash", role: .destructive) { context.delete(photo) }
+                            thumbnail(for: photo)
                         }
                     }
                 }
             }
-            Text("Long-press a photo to set it as the baseline or delete it.")
+            Text("Tap a photo to use it as THEN or NOW, make it your baseline, or delete it.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+        .confirmationDialog(
+            "Delete this photo?",
+            isPresented: Binding(get: { photoPendingDelete != nil }, set: { if !$0 { photoPendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Photo", role: .destructive) {
+                if let photo = photoPendingDelete { context.delete(photo) }
+                photoPendingDelete = nil
+            }
+        } message: {
+            Text(photoPendingDelete?.isBaseline == true ? "This is your baseline. Notifications and Emergency Reset will stop showing it until you set a new one." : "This can't be undone.")
+        }
+    }
+
+    private func thumbnail(for photo: ProgressPhoto) -> some View {
+        let role = photo == thenPhoto ? "THEN" : photo == latest ? "NOW" : nil
+        return PhotoImage(photo: photo)
+            .frame(width: 64, height: 86)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(role == nil ? .clear : (role == "THEN" ? Theme.gold : Theme.red), lineWidth: 2)
+            }
+            .overlay(alignment: .topTrailing) {
+                if photo.isBaseline {
+                    Image(systemName: "star.fill").font(.caption2).foregroundStyle(Theme.gold).padding(4)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let role {
+                    Text(role)
+                        .font(.system(size: 9, weight: .black))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(.black.opacity(0.7), in: Capsule())
+                        .foregroundStyle(role == "THEN" ? Theme.gold : Theme.red)
+                        .padding(.bottom, 4)
+                }
+            }
     }
 
     private var pickerButtons: some View {
@@ -177,6 +211,7 @@ struct TransformationView: View {
         guard let item else { return }
         Task {
             await viewModel.importPhoto(from: item, asBaseline: asBaseline, weight: health.latestWeightLbs, existing: photos, context: context)
+            if !asBaseline { nowPhotoID = nil }
             baselineItem = nil
             progressItem = nil
         }
