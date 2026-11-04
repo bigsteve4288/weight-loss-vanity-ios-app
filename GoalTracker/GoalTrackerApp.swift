@@ -20,6 +20,7 @@ struct GoalTrackerApp: App {
             WorkoutRoutine.self,
             WeightMilestone.self,
             SpiritualQuote.self,
+            CoachCritique.self,
         ])
     }
 }

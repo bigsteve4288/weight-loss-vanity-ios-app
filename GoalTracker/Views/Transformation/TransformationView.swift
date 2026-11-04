@@ -19,6 +19,7 @@ struct TransformationView: View {
     @State private var thenPhotoID: PersistentIdentifier?
     @State private var baselineItem: PhotosPickerItem?
     @State private var progressItem: PhotosPickerItem?
+    @State private var isShowingCoach = false
 
     private var baseline: ProgressPhoto? { photos.first(where: \.isBaseline) }
     private var latest: ProgressPhoto? { photos.last(where: { !$0.isBaseline }) }
@@ -53,6 +54,17 @@ struct TransformationView: View {
                             overlayComparison
                         }
 
+                        Button { isShowingCoach = true } label: {
+                            Label("GET THE COACH'S VERDICT", systemImage: "flame.fill")
+                                .font(.headline.weight(.black))
+                                .tracking(1.2)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Theme.redGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+
                         photoStrip
                     }
                     pickerButtons
@@ -61,6 +73,10 @@ struct TransformationView: View {
             }
             .background(ThemedBackground())
             .navigationTitle("Transformation")
+            .toolbar {
+                Button("AI Coach", systemImage: "flame.fill") { isShowingCoach = true }
+            }
+            .sheet(isPresented: $isShowingCoach) { CoachView(thenPhoto: thenPhoto, nowPhoto: latest) }
             .overlay {
                 if viewModel.isImporting {
                     ProgressView().controlSize(.large)

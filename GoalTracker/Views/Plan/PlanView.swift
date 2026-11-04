@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PlanView: View {
     @Environment(\.modelContext) private var context
+    @Environment(HealthKitManager.self) private var health
     @Query(sort: \WeightMilestone.targetWeightLbs, order: .reverse) private var milestones: [WeightMilestone]
     @Query(sort: \WorkoutRoutine.createdAt) private var workouts: [WorkoutRoutine]
 
@@ -30,6 +31,16 @@ struct PlanView: View {
                         }
                     }
                     .onDelete { offsets in offsets.forEach { context.delete(milestones[$0]) } }
+                }
+
+                Section {
+                    if health.recentWorkouts.isEmpty {
+                        Text("No workouts in the last 14 days. Turn on Apple Health sync in Nike Run Club and Peloton.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(health.recentWorkouts) { WorkoutSummaryRow(workout: $0) }
+                } header: {
+                    Text("Recent Workouts · Apple Health")
                 }
 
                 Section("Workout Routines") {

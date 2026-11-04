@@ -12,6 +12,8 @@ A high-accountability weight loss and mindset dashboard for iOS. It tracks a 34 
 | **Target engine** | Current vs. target weight (start − 34 lb), a live countdown to your birthday, the required daily deficit, today's actual deficit (resting + active − consumed), and a 14-day weight trend. The status is one of **ON TRACK**, **PUSH HARDER TODAY** or **DEFICIT NEEDED**. It also warns you if the required pace is above 2 lb/week. |
 | **Transformation** | Baseline "Then" photo next to your latest progress photo, or an overlay mode with an opacity slider. Any past photo can be used as the "Then" image. |
 | **Mindset** | Daily lock-screen notifications with live numbers, a rotating quote and your baseline photo attached. The **Emergency Reset** button opens a full-screen box-breathing and grounding screen. |
+| **AI Coach** | Sends your THEN and NOW photos plus your stats to Claude (`claude-opus-5-5`) and gets back a graded verdict: what it sees, how far you are from THEN, what to fix, and 3 orders for today. Tone can be Supportive, Blunt or Drill Sergeant. Past verdicts are saved and fed into the next one. |
+| **Training** | Reads workouts from Apple Health (Nike Run Club, Peloton, Apple Watch) for the dashboard, the Plan tab and the coach. |
 | **Plan** | SwiftData-backed workout routines, weight milestones (auto-marked when you hit them) and a spiritual quote log. |
 
 ## Project layout
@@ -56,6 +58,8 @@ xcodebuild test -project GoalTracker.xcodeproj -scheme GoalTracker \
 ```
 
 ## Notes
+
+- **AI Coach setup:** create an API key at console.anthropic.com → API Keys, then paste it into Transform → AI Coach. It's stored in the iPhone Keychain and never in this repo. Each verdict sends both photos and your stats to Anthropic's API.
 
 - **Deficit math:** it assumes 3,500 kcal per pound. Resting burn comes from Health's basal energy. If there's none (no Apple Watch), it falls back to the resting-calorie value in Goal Settings, prorated by how much of the day has passed.
 - **Notifications:** iOS repeating notifications can't change their content. The app schedules the next 14 days individually and rebuilds them every time it opens, so the countdown stays current. Open the app at least once every two weeks to keep them coming.
