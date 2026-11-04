@@ -69,9 +69,16 @@ final class HealthKitManager {
         carbsGrams = await todaySum(Self.carbohydrates, unit: .gram())
         proteinGrams = await todaySum(Self.protein, unit: .gram())
         fatGrams = await todaySum(Self.fat, unit: .gram())
-        activeEnergyBurned = await todaySum(Self.activeEnergy, unit: .kilocalorie())
+        let sampledActiveEnergy = await todaySum(Self.activeEnergy, unit: .kilocalorie())
         basalEnergyBurned = await todaySum(Self.basalEnergy, unit: .kilocalorie())
         recentWorkouts = await fetchRecentWorkouts(days: 14)
+        // Workouts saved without active-energy samples don't show up in the sum above. Taking the larger of the
+        // two credits those workouts without double-counting ones whose samples are already included.
+        let workoutEnergyToday = recentWorkouts
+            .filter { Calendar.current.isDateInToday($0.start) }
+            .compactMap(\.calories)
+            .reduce(0, +)
+        activeEnergyBurned = max(sampledActiveEnergy, workoutEnergyToday)
         lastUpdated = .now
     }
 

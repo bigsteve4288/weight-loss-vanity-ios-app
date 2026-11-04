@@ -22,17 +22,21 @@ struct WorkoutSummary: Identifiable, Hashable, Sendable {
 
 extension WorkoutSummary {
     init(_ workout: HKWorkout) {
+        // Some apps (e.g. Peloton) store totals on the workout itself instead of as separate samples,
+        // so fall back to the workout's own totals when there are no per-sample statistics.
         let distance = [HKQuantityType(.distanceWalkingRunning), HKQuantityType(.distanceCycling)]
             .lazy
             .compactMap { workout.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .mile()) }
-            .first
+            .first ?? workout.totalDistance?.doubleValue(for: .mile())
+        let calories = workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie())
+            ?? workout.totalEnergyBurned?.doubleValue(for: .kilocalorie())
         self.init(
             id: workout.uuid,
             activityName: workout.workoutActivityType.displayName,
             symbolName: workout.workoutActivityType.symbolName,
             start: workout.startDate,
             duration: workout.duration,
-            calories: workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie()),
+            calories: calories,
             distanceMiles: distance,
             source: workout.sourceRevision.source.name
         )
