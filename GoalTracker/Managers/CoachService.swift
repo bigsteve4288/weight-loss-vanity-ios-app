@@ -75,7 +75,7 @@ enum CoachError: LocalizedError, Equatable {
 struct CoachService: Sendable {
     static let directEndpoint = URL(string: "https://api.anthropic.com/v1/messages")!
     /// The Cloudflare Worker in `proxy/`, which holds the Anthropic key so testers only need an access code.
-    static let proxyEndpoint = URL(string: "https://vanity-coach.REPLACE_WITH_SUBDOMAIN.workers.dev/v1/messages")!
+    static let proxyEndpoint = URL(string: "https://vanity-coach.bigsteve4288.workers.dev/v1/messages")!
     static let model = "claude-opus-5-5"
 
     /// What's saved in the Keychain: an Anthropic key (`sk-ant-…`) talks to the API directly; anything else is a proxy access code.

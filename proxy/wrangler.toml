@@ -13,4 +13,4 @@ DAILY_LIMIT = "10"
 # and paste the id it prints here.
 [[kv_namespaces]]
 binding = "USAGE"
-id = "REPLACE_WITH_KV_ID"
+id = "a0c8d4d9893f4eb9b84d6359cd8801a3"
