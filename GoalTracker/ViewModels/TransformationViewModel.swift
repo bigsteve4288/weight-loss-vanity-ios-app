@@ -18,7 +18,10 @@ final class TransformationViewModel {
                 errorMessage = "That photo couldn't be loaded."
                 return
             }
-            save(raw, asBaseline: asBaseline, weight: weight, existing: existing, context: context)
+            // Older library photos keep their real date; today's weight only applies to recent ones.
+            let taken = ImageProcessing.captureDate(of: raw) ?? .now
+            let isRecent = abs(taken.timeIntervalSinceNow) < 2 * 86_400
+            save(raw, date: taken, asBaseline: asBaseline, weight: isRecent ? weight : nil, existing: existing, context: context)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -29,10 +32,10 @@ final class TransformationViewModel {
             errorMessage = "That photo couldn't be saved."
             return
         }
-        save(raw, asBaseline: asBaseline, weight: weight, existing: existing, context: context)
+        save(raw, date: .now, asBaseline: asBaseline, weight: weight, existing: existing, context: context)
     }
 
-    private func save(_ raw: Data, asBaseline: Bool, weight: Double?, existing: [ProgressPhoto], context: ModelContext) {
+    private func save(_ raw: Data, date: Date, asBaseline: Bool, weight: Double?, existing: [ProgressPhoto], context: ModelContext) {
         guard let data = ImageProcessing.downscaledJPEG(raw, maxDimension: 1600) else {
             errorMessage = "That photo couldn't be loaded."
             return
@@ -40,7 +43,7 @@ final class TransformationViewModel {
         if asBaseline {
             existing.filter(\.isBaseline).forEach { $0.isBaseline = false }
         }
-        context.insert(ProgressPhoto(imageData: data, isBaseline: asBaseline, weightLbs: weight))
+        context.insert(ProgressPhoto(date: date, imageData: data, isBaseline: asBaseline, weightLbs: weight))
     }
 
     func makeBaseline(_ photo: ProgressPhoto, among photos: [ProgressPhoto]) {

@@ -21,6 +21,7 @@ final class CameraController: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
     private let queue = DispatchQueue(label: "com.bigsteve4288.goaltracker.camera")
     private let lock = NSLock()
     private var currentInput: AVCaptureDeviceInput?
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     private var pendingCapture: CheckedContinuation<UIImage, Error>?
 
     static var isAvailable: Bool { AVCaptureDevice.default(for: .video) != nil }
@@ -66,6 +67,11 @@ final class CameraController: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
         try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 self.lock.withLock { self.pendingCapture = continuation }
+                // Set rotation per shot: the connection doesn't exist yet while the session is first being configured.
+                if let connection = self.photoOutput.connection(with: .video) {
+                    let angle = self.rotationCoordinator?.videoRotationAngleForHorizonLevelCapture ?? 90
+                    if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
+                }
                 self.photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
             }
         }
@@ -96,9 +102,9 @@ final class CameraController: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
         guard session.canAddInput(input) else { throw CameraError.unavailable }
         session.addInput(input)
         currentInput = input
+        rotationCoordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
 
         if let connection = photoOutput.connection(with: .video) {
-            if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
             // Mirror front-camera shots so the saved photo matches what you saw on screen.
             if connection.isVideoMirroringSupported {
                 connection.automaticallyAdjustsVideoMirroring = false

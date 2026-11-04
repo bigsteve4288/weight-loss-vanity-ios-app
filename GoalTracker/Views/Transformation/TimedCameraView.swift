@@ -9,7 +9,7 @@ struct TimedCameraView: View {
     let onCapture: (UIImage) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("cameraTimerSeconds") private var timerSeconds = 10
+    @AppStorage("cameraTimer") private var timerSeconds = 0
     @AppStorage("cameraUsesFront") private var usesFront = true
     @AppStorage("cameraShowsGhost") private var showsGhost = true
 
@@ -75,7 +75,7 @@ struct TimedCameraView: View {
                     errorBanner(errorMessage)
                 }
                 if countdown == nil {
-                    Text("Prop the phone up, step back, and fit head to feet in the frame.")
+                    Text(timerSeconds == 0 ? "Turn on the timer to prop the phone up for a full-body shot." : "Prop the phone up, step back, and fit head to feet in the frame.")
                         .font(.footnote.weight(.semibold))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 14)

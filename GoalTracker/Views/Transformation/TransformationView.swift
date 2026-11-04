@@ -19,6 +19,7 @@ struct TransformationView: View {
     @State private var thenPhotoID: PersistentIdentifier?
     @State private var nowPhotoID: PersistentIdentifier?
     @State private var photoPendingDelete: ProgressPhoto?
+    @State private var editingPhoto: ProgressPhoto?
     /// Which slot a new photo goes into.
     enum PhotoSlot: String, Identifiable {
         case baseline, progress
@@ -149,6 +150,7 @@ struct TransformationView: View {
                         Menu {
                             Button("Use as THEN", systemImage: "clock.arrow.circlepath") { thenPhotoID = photo.persistentModelID }
                             Button("Use as NOW", systemImage: "camera") { nowPhotoID = photo.persistentModelID }
+                            Button("Edit Date & Weight…", systemImage: "calendar") { editingPhoto = photo }
                             if !photo.isBaseline {
                                 Button("Make Baseline", systemImage: "star") { viewModel.makeBaseline(photo, among: photos) }
                             }
@@ -164,6 +166,7 @@ struct TransformationView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+        .sheet(item: $editingPhoto) { PhotoDetailsEditor(photo: $0) }
         .confirmationDialog(
             "Delete this photo?",
             isPresented: Binding(get: { photoPendingDelete != nil }, set: { if !$0 { photoPendingDelete = nil } }),
@@ -219,7 +222,7 @@ struct TransformationView: View {
     private func photoMenu(_ title: String, systemImage: String, slot: PhotoSlot) -> some View {
         Menu {
             if CameraController.isAvailable {
-                Button("Take Photo (Timer)", systemImage: "camera.fill") { cameraSlot = slot }
+                Button("Take Photo", systemImage: "camera.fill") { cameraSlot = slot }
             }
             Button("Choose from Library", systemImage: "photo.on.rectangle") {
                 librarySlot = slot
