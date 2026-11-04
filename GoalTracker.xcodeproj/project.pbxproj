@@ -258,6 +258,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = GoalTracker;
+				INFOPLIST_KEY_NSCameraUsageDescription = "GoalTracker uses the camera to take your baseline and progress photos.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "GoalTracker reads your weight, calories, macros and energy burned from Apple Health to calculate your daily deficit and track progress toward your target.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "GoalTracker saves weigh-ins you log manually to Apple Health so all your apps stay in sync.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -288,6 +289,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = GoalTracker;
+				INFOPLIST_KEY_NSCameraUsageDescription = "GoalTracker uses the camera to take your baseline and progress photos.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "GoalTracker reads your weight, calories, macros and energy burned from Apple Health to calculate your daily deficit and track progress toward your target.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "GoalTracker saves weigh-ins you log manually to Apple Health so all your apps stay in sync.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

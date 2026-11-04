@@ -19,8 +19,16 @@ struct TransformationView: View {
     @State private var thenPhotoID: PersistentIdentifier?
     @State private var nowPhotoID: PersistentIdentifier?
     @State private var photoPendingDelete: ProgressPhoto?
-    @State private var baselineItem: PhotosPickerItem?
-    @State private var progressItem: PhotosPickerItem?
+    /// Which slot a new photo goes into.
+    enum PhotoSlot: String, Identifiable {
+        case baseline, progress
+        var id: Self { self }
+    }
+
+    @State private var pickedItem: PhotosPickerItem?
+    @State private var isShowingLibrary = false
+    @State private var librarySlot = PhotoSlot.progress
+    @State private var cameraSlot: PhotoSlot?
     @State private var isShowingCoach = false
 
     private var baseline: ProgressPhoto? { photos.first(where: \.isBaseline) }
@@ -86,8 +94,15 @@ struct TransformationView: View {
                     ProgressView().controlSize(.large)
                 }
             }
-            .onChange(of: baselineItem) { _, item in importItem(item, asBaseline: true) }
-            .onChange(of: progressItem) { _, item in importItem(item, asBaseline: false) }
+            .photosPicker(isPresented: $isShowingLibrary, selection: $pickedItem, matching: .images)
+            .onChange(of: pickedItem) { _, item in importItem(item, into: librarySlot) }
+            .fullScreenCover(item: $cameraSlot) { slot in
+                CameraPicker { image in
+                    viewModel.saveCapturedPhoto(image, asBaseline: slot == .baseline, weight: health.latestWeightLbs, existing: photos, context: context)
+                    if slot == .progress { nowPhotoID = nil }
+                }
+                .ignoresSafeArea()
+            }
             .alert("Photo Error", isPresented: Binding(get: { viewModel.errorMessage != nil }, set: { if !$0 { viewModel.errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -193,27 +208,35 @@ struct TransformationView: View {
     private var pickerButtons: some View {
         let baselineTitle = baseline == nil ? "Add Baseline" : "New Baseline"
         return HStack(spacing: 12) {
-            PhotosPicker(selection: $baselineItem, matching: .images) {
-                Label(baselineTitle, systemImage: "star.square.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            PhotosPicker(selection: $progressItem, matching: .images) {
-                Label("Add Progress", systemImage: "camera.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
+            photoMenu(baselineTitle, systemImage: "star.square.fill", slot: .baseline)
+                .buttonStyle(.bordered)
+            photoMenu("Add Progress", systemImage: "camera.fill", slot: .progress)
+                .buttonStyle(.borderedProminent)
         }
         .controlSize(.large)
     }
 
-    private func importItem(_ item: PhotosPickerItem?, asBaseline: Bool) {
+    private func photoMenu(_ title: String, systemImage: String, slot: PhotoSlot) -> some View {
+        Menu {
+            if CameraPicker.isAvailable {
+                Button("Take Selfie", systemImage: "camera.fill") { cameraSlot = slot }
+            }
+            Button("Choose from Library", systemImage: "photo.on.rectangle") {
+                librarySlot = slot
+                isShowingLibrary = true
+            }
+        } label: {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func importItem(_ item: PhotosPickerItem?, into slot: PhotoSlot) {
         guard let item else { return }
         Task {
-            await viewModel.importPhoto(from: item, asBaseline: asBaseline, weight: health.latestWeightLbs, existing: photos, context: context)
-            if !asBaseline { nowPhotoID = nil }
-            baselineItem = nil
-            progressItem = nil
+            await viewModel.importPhoto(from: item, asBaseline: slot == .baseline, weight: health.latestWeightLbs, existing: photos, context: context)
+            if slot == .progress { nowPhotoID = nil }
+            pickedItem = nil
         }
     }
 }
