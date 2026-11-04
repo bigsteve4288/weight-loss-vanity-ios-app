@@ -88,7 +88,9 @@ struct TransformationView: View {
             .toolbar {
                 Button("AI Coach", systemImage: "flame.fill") { isShowingCoach = true }
             }
-            .sheet(isPresented: $isShowingCoach) { CoachView(thenPhoto: thenPhoto, nowPhoto: latest) }
+            .sheet(isPresented: $isShowingCoach) {
+                CoachView(thenPhoto: thenPhoto, nowPhoto: latest) { image in saveCaptured(image, into: .progress) }
+            }
             .overlay {
                 if viewModel.isImporting {
                     ProgressView().controlSize(.large)
@@ -97,11 +99,9 @@ struct TransformationView: View {
             .photosPicker(isPresented: $isShowingLibrary, selection: $pickedItem, matching: .images)
             .onChange(of: pickedItem) { _, item in importItem(item, into: librarySlot) }
             .fullScreenCover(item: $cameraSlot) { slot in
-                CameraPicker { image in
-                    viewModel.saveCapturedPhoto(image, asBaseline: slot == .baseline, weight: health.latestWeightLbs, existing: photos, context: context)
-                    if slot == .progress { nowPhotoID = nil }
+                TimedCameraView(ghostImageData: slot == .progress ? thenPhoto?.imageData : latest?.imageData) { image in
+                    saveCaptured(image, into: slot)
                 }
-                .ignoresSafeArea()
             }
             .alert("Photo Error", isPresented: Binding(get: { viewModel.errorMessage != nil }, set: { if !$0 { viewModel.errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -218,8 +218,8 @@ struct TransformationView: View {
 
     private func photoMenu(_ title: String, systemImage: String, slot: PhotoSlot) -> some View {
         Menu {
-            if CameraPicker.isAvailable {
-                Button("Take Selfie", systemImage: "camera.fill") { cameraSlot = slot }
+            if CameraController.isAvailable {
+                Button("Take Photo (Timer)", systemImage: "camera.fill") { cameraSlot = slot }
             }
             Button("Choose from Library", systemImage: "photo.on.rectangle") {
                 librarySlot = slot
@@ -229,6 +229,11 @@ struct TransformationView: View {
             Label(title, systemImage: systemImage)
                 .frame(maxWidth: .infinity)
         }
+    }
+
+    private func saveCaptured(_ image: UIImage, into slot: PhotoSlot) {
+        viewModel.saveCapturedPhoto(image, asBaseline: slot == .baseline, weight: health.latestWeightLbs, existing: photos, context: context)
+        if slot == .progress { nowPhotoID = nil }
     }
 
     private func importItem(_ item: PhotosPickerItem?, into slot: PhotoSlot) {

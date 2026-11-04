@@ -4,6 +4,8 @@ import SwiftUI
 struct CoachView: View {
     let thenPhoto: ProgressPhoto?
     let nowPhoto: ProgressPhoto?
+    /// Saves a freshly taken progress photo, which then becomes `nowPhoto`.
+    let onNewNowPhoto: (UIImage) -> Void
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +15,7 @@ struct CoachView: View {
 
     @State private var viewModel = CoachViewModel()
     @State private var keyDraft = ""
+    @State private var isShowingCamera = false
     @AppStorage("coachTone") private var toneRaw = CoachTone.drillSergeant.rawValue
 
     private var tone: Binding<CoachTone> {
@@ -46,6 +49,9 @@ struct CoachView: View {
             }
             .background(ThemedBackground())
             .navigationTitle("AI Coach")
+            .fullScreenCover(isPresented: $isShowingCamera) {
+                TimedCameraView(ghostImageData: thenPhoto?.imageData, onCapture: onNewNowPhoto)
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -69,6 +75,17 @@ struct CoachView: View {
                     PhotoPanel(photo: nowPhoto, label: "NOW")
                 }
                 .frame(maxHeight: 200)
+
+                if CameraController.isAvailable {
+                    Button {
+                        isShowingCamera = true
+                    } label: {
+                        Label("Take New NOW Photo", systemImage: "camera.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.isLoading)
+                }
 
                 Button {
                     guard let thenPhoto, let nowPhoto else { return }
