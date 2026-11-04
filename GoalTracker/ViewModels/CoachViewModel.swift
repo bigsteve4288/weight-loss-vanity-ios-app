@@ -80,6 +80,15 @@ final class CoachViewModel {
             lines.append("- Today so far: \(health.caloriesConsumed.formatted(kcal)) kcal eaten (carbs \(health.carbsGrams.formatted(kcal)) g, protein \(health.proteinGrams.formatted(kcal)) g, fat \(health.fatGrams.formatted(kcal)) g); \(snapshot.todayBurn.formatted(kcal)) kcal burned (\(health.activeEnergyBurned.formatted(kcal)) active). Deficit \(snapshot.todayDeficit.formatted(kcal)) vs \(snapshot.requiredDailyDeficit.formatted(kcal)) kcal required per day.")
         }
 
+        let todaysWorkouts = health.recentWorkouts.filter { Calendar.current.isDate($0.start, inSameDayAs: now) }
+        if todaysWorkouts.isEmpty {
+            lines.append("- Workouts today: none yet.")
+        } else {
+            let calories = todaysWorkouts.compactMap(\.calories).reduce(0, +)
+            let names = todaysWorkouts.map { "\($0.activityName) via \($0.source)" }.joined(separator: ", ")
+            lines.append("- Workouts today: \(names) — \(calories.formatted(kcal)) kcal reported by the apps, already included in today's burn.")
+        }
+
         let weekAgo = now.addingTimeInterval(-7 * 86_400)
         let week = health.recentWorkouts.filter { $0.start >= weekAgo }
         if week.isEmpty {

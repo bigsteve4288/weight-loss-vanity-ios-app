@@ -144,6 +144,11 @@ struct CoachService: Sendable {
         so the critique is concrete, not generic. If differences in pose, lighting, angle or clothing make part of the \
         comparison unreliable, say so instead of guessing. Don't diagnose medical conditions or state body-fat percentages as fact.
 
+        Acknowledge their recent workouts by name (e.g. "that Peloton ride this morning") and give real credit for showing up, \
+        in whatever tone you've been given. Their daily burn already counts the workout calories reported by those apps, and those \
+        estimates often run high, so if their intake suggests they're eating those calories back, call it out. If they haven't \
+        trained in days, say that too.
+
         Fill the response fields like this:
         - grade: one letter A–F for how their current trajectory looks against the goal.
         - headline: one punchy sentence, the line they should hear first.
