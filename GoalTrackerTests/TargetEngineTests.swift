@@ -88,17 +88,14 @@ struct TargetEngineTests {
 }
 
 struct NotificationContentTests {
-    @Test func fireDateRollsToTomorrowWhenTimeHasPassed() {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 4, hour: 9))!
-        let first = NotificationContent.fireDate(dayOffset: 0, hour: 7, minute: 0, now: now, calendar: calendar)!
-        #expect(calendar.component(.day, from: first) == 5)
-        let later = NotificationContent.fireDate(dayOffset: 0, hour: 20, minute: 30, now: now, calendar: calendar)!
-        #expect(calendar.component(.day, from: later) == 4)
+    @Test func countdownShowsLiveNumbers() {
+        #expect(NotificationContent.countdown(daysLeft: 120, poundsLeft: 24) == "120 days · 24.0 lb to go")
+        #expect(NotificationContent.countdown(daysLeft: 1, poundsLeft: nil) == "1 day")
+        #expect(NotificationContent.countdown(daysLeft: 5, poundsLeft: 0) == "5 days · goal weight reached")
     }
 
-    @Test func titleIncludesLiveNumbers() {
-        #expect(NotificationContent.title(daysLeft: 120, poundsLeft: 24, index: 0) == "120 days. 24.0 lbs. No excuses.")
+    @Test func fastingMorningsGetFastingPrompts() {
+        let body = NotificationContent.body(slot: .beforeBreakfast, skipsBreakfast: true, quote: nil, index: 0)
+        #expect(body.contains("fasting window"))
     }
 }

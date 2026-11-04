@@ -8,7 +8,6 @@ struct MindsetView: View {
 
     @Query private var profiles: [GoalProfile]
     @Query(sort: \SpiritualQuote.createdAt, order: .reverse) private var quotes: [SpiritualQuote]
-    @Query(filter: #Predicate<ProgressPhoto> { $0.isBaseline == true }) private var baselines: [ProgressPhoto]
 
     @State private var isShowingReset = false
     @State private var isAddingQuote = false
@@ -50,22 +49,12 @@ struct MindsetView: View {
     }
 
     private func reschedule() async {
-        await notifications.reschedule(
-            profile: profiles.first,
-            currentWeight: health.latestWeightLbs,
-            quotes: quotes,
-            baselineImageData: baselines.first?.imageData
-        )
+        await notifications.reschedule(context: context, currentWeight: health.latestWeightLbs)
     }
 
     private func sendTest(_ profile: GoalProfile) {
         Task {
-            await notifications.sendTestNotification(
-                profile: profile,
-                currentWeight: health.latestWeightLbs,
-                quotes: quotes,
-                baselineImageData: baselines.first?.imageData
-            )
+            await notifications.sendTestNotification(context: context, currentWeight: health.latestWeightLbs)
         }
     }
 }
@@ -74,17 +63,10 @@ private struct NotificationSettingsSection: View {
     @Bindable var profile: GoalProfile
     let reschedule: () async -> Void
     let sendTest: () -> Void
+    @Environment(\.modelContext) private var context
+    @Environment(HealthKitManager.self) private var health
     @Environment(UserNotificationManager.self) private var notifications
-
-    private var time: Binding<Date> {
-        Binding {
-            Calendar.current.date(bySettingHour: profile.notificationHour, minute: profile.notificationMinute, second: 0, of: .now) ?? .now
-        } set: { date in
-            let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-            profile.notificationHour = components.hour ?? 7
-            profile.notificationMinute = components.minute ?? 0
-        }
-    }
+    @Environment(CoachNotesManager.self) private var coachNotes
 
     private var enabled: Binding<Bool> {
         Binding {
@@ -93,16 +75,32 @@ private struct NotificationSettingsSection: View {
             Task {
                 profile.notificationsEnabled = isOn ? await notifications.requestAuthorization() : false
                 await reschedule()
+                if profile.notificationsEnabled, await coachNotes.refreshIfNeeded(context: context, health: health) {
+                    await reschedule()
+                }
             }
         }
     }
 
+    private var daySummary: String {
+        let time = Date.FormatStyle.dateTime.hour().minute()
+        return "Wake \(profile.wakeMinutes.asTime().formatted(time)) · Bed \(profile.bedMinutes.asTime().formatted(time))"
+    }
+
     var body: some View {
         Section {
-            Toggle("Daily Accountability", isOn: enabled)
+            Toggle("Coach Check-ins", isOn: enabled)
             if profile.notificationsEnabled {
-                DatePicker("Delivery Time", selection: time, displayedComponents: .hourAndMinute)
-                LabeledContent("Scheduled", value: "\(notifications.scheduledCount) days ahead")
+                NavigationLink {
+                    DailyRhythmView(profile: profile, isOnboarding: false)
+                } label: {
+                    LabeledContent("Your Day", value: daySummary)
+                }
+                ForEach(ReminderSlot.allCases) { slot in
+                    ReminderSlotRow(profile: profile, slot: slot)
+                }
+                CoachNotesStatus(reschedule: reschedule)
+                LabeledContent("Scheduled", value: "\(notifications.scheduledCount) check-ins this week")
             }
             Button("Send Test Notification (5s)", systemImage: "bell.badge", action: sendTest)
             if let status = notifications.testStatus {
@@ -118,12 +116,90 @@ private struct NotificationSettingsSection: View {
                 }
             }
         } header: {
-            Text("Lock-Screen Notifications")
+            Text("Lock-Screen Check-ins")
         } footer: {
-            Text("Each notification carries your live countdown, a quote and your baseline photo. Lock your phone after tapping Test to see it.")
+            Text("Your coach writes today's and tomorrow's check-ins and refreshes them about every 12 hours, using your latest numbers. Built-in messages fill in when it can't. Each one shows your live countdown.")
         }
-        .onChange(of: profile.notificationHour) { Task { await reschedule() } }
-        .onChange(of: profile.notificationMinute) { Task { await reschedule() } }
+        .onChange(of: profile.reminderOverrides) { Task { await reschedule() } }
+    }
+}
+
+/// One check-in: on/off, and its time (derived from the user's day unless they change it).
+private struct ReminderSlotRow: View {
+    @Bindable var profile: GoalProfile
+    let slot: ReminderSlot
+
+    private var isOn: Binding<Bool> {
+        Binding {
+            slot.minutes(for: profile) != nil
+        } set: { on in
+            if on { profile.reminderOverrides[slot.rawValue] = nil } else { profile.reminderOverrides[slot.rawValue] = -1 }
+        }
+    }
+
+    private var time: Binding<Date> {
+        Binding {
+            (slot.minutes(for: profile) ?? slot.derivedMinutes(for: profile.dailyRhythm)).asTime()
+        } set: { date in
+            let minutes = date.minutesAfterMidnight
+            profile.reminderOverrides[slot.rawValue] = minutes == slot.derivedMinutes(for: profile.dailyRhythm) ? nil : minutes
+        }
+    }
+
+    var body: some View {
+        HStack {
+            Label(slot.label, systemImage: slot.systemImage)
+                .foregroundStyle(isOn.wrappedValue ? .primary : .secondary)
+            Spacer()
+            if isOn.wrappedValue {
+                DatePicker(slot.label, selection: time, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+            }
+            Toggle(slot.label, isOn: isOn)
+                .labelsHidden()
+        }
+    }
+}
+
+/// Whether the coach or the built-in library is writing the check-ins, and a way to rewrite now.
+private struct CoachNotesStatus: View {
+    let reschedule: () async -> Void
+    @Environment(\.modelContext) private var context
+    @Environment(HealthKitManager.self) private var health
+    @Environment(CoachNotesManager.self) private var coachNotes
+    @Query(sort: \CoachNote.day, order: .reverse) private var notes: [CoachNote]
+
+    private var hasAccessCode: Bool { KeychainStore.read(KeychainStore.anthropicAPIKey) != nil }
+
+    var body: some View {
+        if coachNotes.isWriting {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text("Your coach is writing your check-ins…").font(.subheadline).foregroundStyle(.secondary)
+            }
+        } else if !hasAccessCode {
+            Text("Using built-in messages. Add your access code in AI Coach (Transform tab) and your coach will write them for you.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                if let error = coachNotes.lastError {
+                    Text("Couldn't write new check-ins: \(error)").font(.caption).foregroundStyle(Theme.red)
+                }
+                if let last = notes.first, let written = notes.map(\.createdAt).max() {
+                    Text("Written by your coach through \(last.day.formatted(.dateTime.weekday(.wide))) · updated \(written.formatted(.relative(presentation: .named)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Button("Rewrite Now", systemImage: "arrow.clockwise") {
+                    Task {
+                        if await coachNotes.refreshIfNeeded(context: context, health: health, force: true) {
+                            await reschedule()
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

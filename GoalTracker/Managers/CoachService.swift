@@ -91,6 +91,12 @@ struct CoachService: Sendable {
     let credential: Credential
 
     func critique(then: CoachPhoto, now: CoachPhoto, context: String, tone: CoachTone) async throws -> CoachVerdict {
+        let data = try await send(Self.requestBody(then: then, now: now, context: context, tone: tone))
+        return try Self.parseVerdict(from: data)
+    }
+
+    /// Posts a Messages API body to Anthropic directly or through the proxy, depending on the credential.
+    func send(_ body: [String: Any]) async throws -> Data {
         var request: URLRequest
         switch credential {
         case let .apiKey(key):
@@ -105,14 +111,14 @@ struct CoachService: Sendable {
         // Lets the API re-run a declined request on Anthropic's recommended fallback model.
         request.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: Self.requestBody(then: then, now: now, context: context, tone: tone))
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
             throw CoachError.http(status: status, message: Self.errorMessage(from: data))
         }
-        return try Self.parseVerdict(from: data)
+        return data
     }
 
     static func requestBody(then: CoachPhoto, now: CoachPhoto, context: String, tone: CoachTone) -> [String: Any] {
@@ -140,6 +146,11 @@ struct CoachService: Sendable {
     }
 
     static func parseVerdict(from data: Data) throws -> CoachVerdict {
+        try decodeOutput(CoachVerdict.self, from: data)
+    }
+
+    /// Decodes the structured-output JSON from a Messages API response.
+    static func decodeOutput<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         guard let message = try? JSONDecoder().decode(MessageResponse.self, from: data) else { throw CoachError.malformed }
         switch message.stopReason {
         case "refusal": throw CoachError.refused(message.stopDetails?.explanation)
@@ -149,8 +160,8 @@ struct CoachService: Sendable {
         // When a fallback model takes over, only the text after the last fallback boundary is the answer.
         let start = message.content.lastIndex(where: { $0.type == "fallback" }).map { $0 + 1 } ?? 0
         let text = message.content[start...].filter { $0.type == "text" }.compactMap(\.text).joined()
-        guard let verdict = try? JSONDecoder().decode(CoachVerdict.self, from: Data(text.utf8)) else { throw CoachError.malformed }
-        return verdict
+        guard let output = try? JSONDecoder().decode(T.self, from: Data(text.utf8)) else { throw CoachError.malformed }
+        return output
     }
 
     // MARK: - Prompt
@@ -229,7 +240,7 @@ struct CoachService: Sendable {
         }
     }
 
-    private static func errorMessage(from data: Data) -> String {
+    static func errorMessage(from data: Data) -> String {
         struct ErrorEnvelope: Decodable {
             struct Detail: Decodable { let message: String }
             let error: Detail

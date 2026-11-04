@@ -11,8 +11,18 @@ final class GoalProfile {
     /// Fallback for resting burn when Apple Health has no basal energy data (e.g. no Apple Watch).
     var restingCaloriesPerDay: Double
     var notificationsEnabled: Bool
-    var notificationHour: Int
-    var notificationMinute: Int
+
+    // The user's day, in minutes after midnight. Reminder times are derived from these.
+    var wakeMinutes: Int = 330
+    /// `nil` when they skip breakfast (e.g. fasting until lunch).
+    var breakfastMinutes: Int? = 450
+    var lunchMinutes: Int = 720
+    var dinnerMinutes: Int = 1110
+    var bedMinutes: Int = 1320
+    /// Per-reminder tweaks on top of the derived times, keyed by `ReminderSlot.rawValue`:
+    /// minutes after midnight, or -1 to turn that reminder off.
+    var reminderOverrides: [String: Int] = [:]
+    var hasSetDailyRhythm: Bool = false
 
     init(
         startWeightLbs: Double,
@@ -27,8 +37,6 @@ final class GoalProfile {
         self.targetDate = targetDate
         self.restingCaloriesPerDay = restingCaloriesPerDay
         self.notificationsEnabled = false
-        self.notificationHour = 7
-        self.notificationMinute = 0
     }
 
     var targetWeightLbs: Double { startWeightLbs - lossGoalLbs }

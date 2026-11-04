@@ -1,9 +1,10 @@
 // Vanity AI Coach proxy: holds the Anthropic API key so the app never ships it.
 // The app sends its request body plus an access code; the proxy checks the code,
-// enforces a daily limit per person, pins the model, and forwards to Claude.
+// enforces a daily limit per person, limits the model, and forwards to Claude.
 
 const UPSTREAM = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-opus-5-5";
+// Opus for photo verdicts, Sonnet for the short daily check-ins. Anything else gets Opus.
+const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5"];
 const MAX_TOKENS = 16000;
 const FORWARDED_HEADERS = ["anthropic-version", "anthropic-beta"];
 
@@ -24,7 +25,7 @@ export default {
       return error(400, "invalid_request_error", "Body must be JSON.");
     }
     // Only the coach's own request shape gets through, so a leaked code can't run arbitrary jobs.
-    body.model = MODEL;
+    if (!MODELS.includes(body.model)) body.model = MODELS[0];
     body.max_tokens = Math.min(Number(body.max_tokens) || MAX_TOKENS, MAX_TOKENS);
     delete body.stream;
 

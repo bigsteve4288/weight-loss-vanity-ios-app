@@ -6,10 +6,12 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(HealthKitManager.self) private var health
     @Environment(UserNotificationManager.self) private var notifications
+    @Environment(CoachNotesManager.self) private var coachNotes
 
     @Query private var profiles: [GoalProfile]
-    @Query private var quotes: [SpiritualQuote]
-    @Query(filter: #Predicate<ProgressPhoto> { $0.isBaseline == true }) private var baselines: [ProgressPhoto]
+
+    /// New users set their goal, then their day; existing users are asked for their day once.
+    private var needsOnboarding: Bool { profiles.first?.hasSetDailyRhythm != true }
 
     var body: some View {
         TabView {
@@ -22,9 +24,15 @@ struct RootView: View {
             PlanView()
                 .tabItem { Label("Plan", systemImage: "list.bullet.clipboard") }
         }
-        .sheet(isPresented: Binding(get: { profiles.isEmpty }, set: { _ in })) {
-            GoalSetupView(profile: nil)
-                .interactiveDismissDisabled()
+        .sheet(isPresented: Binding(get: { needsOnboarding }, set: { _ in })) {
+            Group {
+                if let profile = profiles.first {
+                    DailyRhythmView(profile: profile, isOnboarding: true)
+                } else {
+                    GoalSetupView(profile: nil)
+                }
+            }
+            .interactiveDismissDisabled()
         }
         .task {
             SeedData.insertDefaultQuotesIfNeeded(into: context)
@@ -32,21 +40,26 @@ struct RootView: View {
             await rescheduleNotifications()
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task {
-                await health.refresh()
-                await rescheduleNotifications()
+            switch phase {
+            case .active:
+                Task {
+                    await health.refresh()
+                    await rescheduleNotifications()
+                }
+            case .background:
+                CoachNotesManager.scheduleBackgroundRefresh()
+            default:
+                break
             }
         }
     }
 
-    /// Daily notifications embed live numbers (days/lbs left), so they are rebuilt whenever the app becomes active.
+    /// Check-ins embed live numbers (days/lbs left), so they're rebuilt whenever the app becomes active,
+    /// then rebuilt again if the coach wrote fresh messages.
     private func rescheduleNotifications() async {
-        await notifications.reschedule(
-            profile: profiles.first,
-            currentWeight: health.latestWeightLbs,
-            quotes: quotes,
-            baselineImageData: baselines.first?.imageData
-        )
+        await notifications.reschedule(context: context, currentWeight: health.latestWeightLbs)
+        if await coachNotes.refreshIfNeeded(context: context, health: health) {
+            await notifications.reschedule(context: context, currentWeight: health.latestWeightLbs)
+        }
     }
 }
