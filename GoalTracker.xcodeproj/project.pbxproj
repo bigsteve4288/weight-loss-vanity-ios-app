@@ -258,6 +258,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Vanity;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Vanity uses the camera to take your baseline and progress photos.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Vanity reads your weight, calories, macros and energy burned from Apple Health to calculate your daily deficit and track progress toward your target.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Vanity saves weigh-ins you log manually to Apple Health so all your apps stay in sync.";
@@ -289,6 +290,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Vanity;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Vanity uses the camera to take your baseline and progress photos.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Vanity reads your weight, calories, macros and energy burned from Apple Health to calculate your daily deficit and track progress toward your target.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Vanity saves weigh-ins you log manually to Apple Health so all your apps stay in sync.";
