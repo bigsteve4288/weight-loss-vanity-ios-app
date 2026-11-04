@@ -10,6 +10,8 @@ import UserNotifications
 final class UserNotificationManager {
     private(set) var isAuthorized = false
     private(set) var scheduledCount = 0
+    private(set) var isDenied = false
+    private(set) var testStatus: String?
 
     @ObservationIgnored private let center = UNUserNotificationCenter.current()
 
@@ -19,11 +21,13 @@ final class UserNotificationManager {
     func refreshAuthorizationStatus() async {
         let status = await center.notificationSettings().authorizationStatus
         isAuthorized = status == .authorized || status == .provisional
+        isDenied = status == .denied
     }
 
     @discardableResult
     func requestAuthorization() async -> Bool {
         isAuthorized = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        await refreshAuthorizationStatus()
         return isAuthorized
     }
 
@@ -62,7 +66,10 @@ final class UserNotificationManager {
     }
 
     func sendTestNotification(profile: GoalProfile, currentWeight: Double?, quotes: [SpiritualQuote], baselineImageData: Data?) async {
-        guard await requestAuthorization() else { return }
+        guard await requestAuthorization() else {
+            testStatus = "Notifications are turned off for GoalTracker. Turn them on in Settings to receive them."
+            return
+        }
         let content = makeContent(
             daysLeft: TargetEngine.daysRemaining(from: .now, to: profile.targetDate),
             poundsLeft: currentWeight.map { max($0 - profile.targetWeightLbs, 0) },
@@ -75,7 +82,12 @@ final class UserNotificationManager {
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
         )
-        try? await center.add(request)
+        do {
+            try await center.add(request)
+            testStatus = "Test sent. It arrives in 5 seconds; lock your phone to see it on the Lock Screen."
+        } catch {
+            testStatus = "Couldn't schedule the test: \(error.localizedDescription)"
+        }
     }
 
     private func makeContent(

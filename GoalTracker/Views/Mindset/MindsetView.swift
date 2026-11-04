@@ -105,6 +105,18 @@ private struct NotificationSettingsSection: View {
                 LabeledContent("Scheduled", value: "\(notifications.scheduledCount) days ahead")
             }
             Button("Send Test Notification (5s)", systemImage: "bell.badge", action: sendTest)
+            if let status = notifications.testStatus {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(notifications.isDenied ? Theme.red : .secondary)
+            }
+            if notifications.isDenied {
+                Button("Open Notification Settings", systemImage: "gear") {
+                    if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            }
         } header: {
             Text("Lock-Screen Notifications")
         } footer: {
