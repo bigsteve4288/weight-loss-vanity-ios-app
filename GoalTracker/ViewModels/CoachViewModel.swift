@@ -29,7 +29,7 @@ final class CoachViewModel {
         previous: CoachCritique?,
         context: ModelContext
     ) async {
-        guard let apiKey = KeychainStore.read(KeychainStore.anthropicAPIKey) else {
+        guard let saved = KeychainStore.read(KeychainStore.anthropicAPIKey) else {
             hasAPIKey = false
             return
         }
@@ -39,7 +39,7 @@ final class CoachViewModel {
 
         let summary = Self.clientContext(profile: profile, health: health, previous: previous)
         do {
-            let verdict = try await CoachService(apiKey: apiKey).critique(
+            let verdict = try await CoachService(credential: .init(saved)).critique(
                 then: CoachPhoto(jpeg: then.imageData, date: then.date, weightLbs: then.weightLbs),
                 now: CoachPhoto(jpeg: now.imageData, date: now.date, weightLbs: now.weightLbs),
                 context: summary,

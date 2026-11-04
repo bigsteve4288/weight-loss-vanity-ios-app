@@ -45,4 +45,9 @@ struct CoachServiceTests {
         #expect(content.map { $0["type"] as? String } == ["text", "image", "text", "image", "text"])
         #expect(JSONSerialization.isValidJSONObject(body))
     }
+
+    @Test func savedCredentialPicksDirectKeyOrProxyCode() {
+        #expect(CoachService.Credential("sk-ant-abc") == .apiKey("sk-ant-abc"))
+        #expect(CoachService.Credential("tiger-42") == .accessCode("tiger-42"))
+    }
 }

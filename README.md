@@ -68,3 +68,19 @@ xcodebuild test -project GoalTracker.xcodeproj -scheme GoalTracker \
 
 - **Deficit math:** it assumes 3,500 kcal per pound. Resting burn comes from Health's basal energy. If there's none (no Apple Watch), it falls back to the resting-calorie value in Goal Settings, prorated by how much of the day has passed.
 - **Notifications:** iOS repeating notifications can't change their content. The app schedules the next 14 days individually and rebuilds them every time it opens, so the countdown stays current. Open the app at least once every two weeks to keep them coming.
+
+## AI Coach proxy (for testers)
+
+`proxy/` is a Cloudflare Worker that holds the Anthropic API key, so testers only enter an access code in the app.
+It checks the code, allows `DAILY_LIMIT` verdicts per person per day, pins the model, and forwards to Claude.
+
+```sh
+cd proxy
+npx wrangler@4 login
+npx wrangler@4 kv namespace create USAGE        # paste the id into wrangler.toml
+npx wrangler@4 secret put ANTHROPIC_API_KEY
+npx wrangler@4 secret put ACCESS_CODES           # e.g. steve:<random>,wife:<random>
+npx wrangler@4 deploy                            # put the printed URL in CoachService.proxyEndpoint
+```
+
+A saved value starting with `sk-ant-` still calls the API directly.

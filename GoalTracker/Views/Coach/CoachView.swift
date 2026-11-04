@@ -20,7 +20,7 @@ struct CoachView: View {
 
     private var thenPhoto: ProgressPhoto? { photos.thenPhoto(selected: thenPhotoID) }
     private var nowPhoto: ProgressPhoto? { photos.nowPhoto(selected: nowPhotoID) }
-    @AppStorage("coachTone") private var toneRaw = CoachTone.drillSergeant.rawValue
+    @AppStorage("coachTone") private var toneRaw = CoachTone.supportive.rawValue
 
     private var tone: Binding<CoachTone> {
         Binding { CoachTone(rawValue: toneRaw) ?? .drillSergeant } set: { toneRaw = $0.rawValue }
@@ -136,15 +136,15 @@ struct CoachView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeader(title: "Connect the Coach", systemImage: "key.fill")
-                Text("The AI Coach uses Claude. Create an API key at console.anthropic.com → API Keys, then paste it here. It's stored in this iPhone's Keychain only.")
+                Text("Enter the coach access code you were given. It's stored in this iPhone's Keychain only. (An Anthropic API key starting with sk-ant- also works.)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                SecureField("sk-ant-…", text: $keyDraft)
+                SecureField("Access code", text: $keyDraft)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(12)
                     .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                Button("Save Key") {
+                Button("Save") {
                     viewModel.saveAPIKey(keyDraft)
                     keyDraft = ""
                 }
@@ -188,7 +188,7 @@ struct CoachView: View {
         VStack(spacing: 8) {
             Text("Both photos and your stats are sent to Anthropic's API for each verdict. Nothing is sent until you tap the button.")
             if viewModel.hasAPIKey {
-                Button("Remove API Key", role: .destructive) { viewModel.removeAPIKey() }
+                Button("Remove Access Code", role: .destructive) { viewModel.removeAPIKey() }
             }
         }
         .font(.caption)

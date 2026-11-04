@@ -55,7 +55,11 @@ enum CoachError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case let .http(status, message):
-            status == 401 ? "Your API key was rejected. Check it in the Coach settings." : "Coach request failed (\(status)): \(message)"
+            switch status {
+            case 401: "Your access code or API key was rejected. Check it in the Coach settings."
+            case 429: message
+            default: "Coach request failed (\(status)): \(message)"
+            }
         case let .refused(explanation):
             "The coach declined to review these photos.\(explanation.map { " \($0)" } ?? "")"
         case .truncated:
@@ -69,15 +73,34 @@ enum CoachError: LocalizedError, Equatable {
 /// Calls the Claude Messages API with the THEN and NOW photos and returns a structured verdict.
 /// There's no official Anthropic Swift SDK, so this talks to the REST endpoint directly.
 struct CoachService: Sendable {
-    static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
+    static let directEndpoint = URL(string: "https://api.anthropic.com/v1/messages")!
+    /// The Cloudflare Worker in `proxy/`, which holds the Anthropic key so testers only need an access code.
+    static let proxyEndpoint = URL(string: "https://vanity-coach.REPLACE_WITH_SUBDOMAIN.workers.dev/v1/messages")!
     static let model = "claude-opus-5-5"
 
-    let apiKey: String
+    /// What's saved in the Keychain: an Anthropic key (`sk-ant-…`) talks to the API directly; anything else is a proxy access code.
+    enum Credential: Equatable, Sendable {
+        case apiKey(String)
+        case accessCode(String)
+
+        init(_ saved: String) {
+            self = saved.hasPrefix("sk-ant-") ? .apiKey(saved) : .accessCode(saved)
+        }
+    }
+
+    let credential: Credential
 
     func critique(then: CoachPhoto, now: CoachPhoto, context: String, tone: CoachTone) async throws -> CoachVerdict {
-        var request = URLRequest(url: Self.endpoint, timeoutInterval: 180)
+        var request: URLRequest
+        switch credential {
+        case let .apiKey(key):
+            request = URLRequest(url: Self.directEndpoint, timeoutInterval: 180)
+            request.setValue(key, forHTTPHeaderField: "x-api-key")
+        case let .accessCode(code):
+            request = URLRequest(url: Self.proxyEndpoint, timeoutInterval: 180)
+            request.setValue(code, forHTTPHeaderField: "x-vanity-code")
+        }
         request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2026-10-21", forHTTPHeaderField: "anthropic-version")
         // Lets the API re-run a declined request on Anthropic's recommended fallback model.
         request.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta")

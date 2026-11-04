@@ -1,0 +1,16 @@
+name = "vanity-coach"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Secrets (set with `npx wrangler secret put <NAME>`, never committed):
+#   ANTHROPIC_API_KEY  the Anthropic key the proxy calls Claude with
+#   ACCESS_CODES       comma-separated name:code pairs, e.g. "steve:abc123,wife:def456"
+
+[vars]
+DAILY_LIMIT = "10"
+
+# Per-person daily request counter. Create with `npx wrangler kv namespace create USAGE`
+# and paste the id it prints here.
+[[kv_namespaces]]
+binding = "USAGE"
+id = "REPLACE_WITH_KV_ID"
