@@ -32,7 +32,7 @@ struct DashboardView: View {
                 }
             }
             .background(ThemedBackground())
-            .navigationTitle("GoalTracker")
+            .navigationTitle("Vanity")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Goal Settings", systemImage: "gearshape.fill") { viewModel.isShowingSettings = true }

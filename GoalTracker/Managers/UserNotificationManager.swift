@@ -67,7 +67,7 @@ final class UserNotificationManager {
 
     func sendTestNotification(profile: GoalProfile, currentWeight: Double?, quotes: [SpiritualQuote], baselineImageData: Data?) async {
         guard await requestAuthorization() else {
-            testStatus = "Notifications are turned off for GoalTracker. Turn them on in Settings to receive them."
+            testStatus = "Notifications are turned off for Vanity. Turn them on in Settings to receive them."
             return
         }
         let content = makeContent(

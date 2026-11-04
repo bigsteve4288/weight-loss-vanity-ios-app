@@ -10,7 +10,7 @@ enum SeedData {
         ("They that wait upon the LORD shall renew their strength; they shall run, and not be weary; and they shall walk, and not faint.", "Isaiah 40:31"),
         ("And let us not be weary in well doing: for in due season we shall reap, if we faint not.", "Galatians 6:9"),
         ("Discipline is choosing between what you want now and what you want most.", "Unknown"),
-        ("The craving will pass. The goal remains.", "GoalTracker"),
+        ("The craving will pass. The goal remains.", "Vanity"),
     ]
 
     @MainActor

@@ -1,4 +1,6 @@
-# GoalTracker
+# Vanity
+
+*Vanity, for your health.*
 
 A high-accountability weight loss and mindset dashboard for iOS. It tracks a 34 lb loss toward a target birthday using live Apple Health data.
 
@@ -16,6 +18,8 @@ A high-accountability weight loss and mindset dashboard for iOS. It tracks a 34 
 | **Training** | Reads workouts from Apple Health (Nike Run Club, Peloton, Apple Watch) for the dashboard, the Plan tab and the coach. |
 | **Plan** | SwiftData-backed workout routines, weight milestones (auto-marked when you hit them) and a spiritual quote log. |
 
+The home-screen name is **Vanity**. The Xcode project, target and bundle ID are still named `GoalTracker`.
+
 ## Project layout
 
 ```
@@ -28,6 +32,7 @@ GoalTracker/
 └── Theme/         Gold / black / red palette, glass cards
 Config/GoalTracker.entitlements   HealthKit capability
 GoalTrackerTests/                 Swift Testing unit tests for the target engine
+Design/make_icon.swift            Renders the app icon: swift Design/make_icon.swift AppIcon.png
 ```
 
 The Info.plist is generated from build settings. These keys are set on the GoalTracker target:
