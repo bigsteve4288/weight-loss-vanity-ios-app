@@ -57,13 +57,13 @@ final class UserNotificationManager {
                 let daysLeft = TargetEngine.daysRemaining(from: fireDate, to: profile.targetDate, calendar: calendar)
                 guard daysLeft >= 0 else { break days }
 
+                let message = Self.message(
+                    slot: entry.slot, slotIndex: slotIndex, day: day, notes: notes, profile: profile, quotes: quotes, calendar: calendar
+                )
                 let content = makeContent(
-                    slot: entry.slot,
-                    note: notes[Self.key(day, entry.slot)],
-                    profile: profile,
-                    countdown: NotificationContent.countdown(daysLeft: daysLeft, poundsLeft: poundsLeft),
-                    index: (calendar.ordinality(of: .day, in: .era, for: day) ?? offset) + slotIndex,
-                    quotes: quotes
+                    title: message.title,
+                    body: message.body,
+                    countdown: NotificationContent.countdown(daysLeft: daysLeft, poundsLeft: poundsLeft)
                 )
                 let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
                 let request = UNNotificationRequest(
@@ -95,16 +95,24 @@ final class UserNotificationManager {
             notes[Self.key(today, entry.slot)] ?? notes[Self.key(calendar.date(byAdding: .day, value: 1, to: today) ?? today, entry.slot)]
         }
 
+        let quotes = Self.quotes(in: context)
+        let fallback = Int.random(in: 0..<100)
+        let message = note.map { (title: $0.title, body: $0.body) } ?? (
+            title: slot.label,
+            body: NotificationContent.body(
+                slot: slot,
+                skipsBreakfast: profile.breakfastMinutes == nil,
+                quote: quotes.isEmpty ? nil : quotes[fallback % quotes.count],
+                index: fallback
+            )
+        )
         let content = makeContent(
-            slot: slot,
-            note: note,
-            profile: profile,
+            title: message.title,
+            body: message.body,
             countdown: NotificationContent.countdown(
                 daysLeft: TargetEngine.daysRemaining(from: now, to: profile.targetDate),
                 poundsLeft: currentWeight.map { max($0 - profile.targetWeightLbs, 0) }
-            ),
-            index: Int.random(in: 0..<100),
-            quotes: Self.quotes(in: context)
+            )
         )
         let request = UNNotificationRequest(
             identifier: "goaltracker.test",
@@ -119,34 +127,46 @@ final class UserNotificationManager {
         }
     }
 
-    private func makeContent(
-        slot: ReminderSlot,
-        note: CoachNote?,
-        profile: GoalProfile,
-        countdown: String,
-        index: Int,
-        quotes: [(text: String, source: String)]
-    ) -> UNMutableNotificationContent {
+    private func makeContent(title: String, body: String, countdown: String) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
-        content.title = note?.title ?? slot.label
+        content.title = title
         content.subtitle = countdown
-        content.body = note?.body ?? NotificationContent.body(
-            slot: slot,
-            skipsBreakfast: profile.breakfastMinutes == nil,
-            quote: quotes.isEmpty ? nil : quotes[index % quotes.count],
-            index: index
-        )
+        content.body = body
         content.sound = .default
         content.threadIdentifier = "vanity.checkins"
         return content
     }
 
-    private static func key(_ day: Date, _ slot: ReminderSlot) -> String {
+    /// What a check-in says: the coach's note for that day and slot, or the built-in message.
+    /// Shared by the scheduler and the in-app Check-ins list so both always match.
+    static func message(
+        slot: ReminderSlot,
+        slotIndex: Int,
+        day: Date,
+        notes: [String: CoachNote],
+        profile: GoalProfile,
+        quotes: [(text: String, source: String)],
+        calendar: Calendar = .current
+    ) -> (title: String, body: String, isFromCoach: Bool) {
+        if let note = notes[key(day, slot)] {
+            return (note.title, note.body, true)
+        }
+        let index = (calendar.ordinality(of: .day, in: .era, for: day) ?? 0) + slotIndex
+        let body = NotificationContent.body(
+            slot: slot,
+            skipsBreakfast: profile.breakfastMinutes == nil,
+            quote: quotes.isEmpty ? nil : quotes[index % quotes.count],
+            index: index
+        )
+        return (slot.label, body, false)
+    }
+
+    static func key(_ day: Date, _ slot: ReminderSlot) -> String {
         "\(Int(day.timeIntervalSinceReferenceDate)).\(slot.rawValue)"
     }
 
-    private static func notesBySlot(in context: ModelContext, from today: Date) -> [String: CoachNote] {
-        let notes = (try? context.fetch(FetchDescriptor<CoachNote>(predicate: #Predicate { $0.day >= today }))) ?? []
+    /// The newest note per day and slot.
+    static func latestNotes(_ notes: [CoachNote]) -> [String: CoachNote] {
         var bySlot: [String: CoachNote] = [:]
         for note in notes {
             guard let slot = note.slot else { continue }
@@ -155,6 +175,10 @@ final class UserNotificationManager {
             bySlot[key] = note
         }
         return bySlot
+    }
+
+    private static func notesBySlot(in context: ModelContext, from today: Date) -> [String: CoachNote] {
+        latestNotes((try? context.fetch(FetchDescriptor<CoachNote>(predicate: #Predicate { $0.day >= today }))) ?? [])
     }
 
     private static func quotes(in context: ModelContext) -> [(text: String, source: String)] {

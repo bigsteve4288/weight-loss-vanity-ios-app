@@ -7,11 +7,15 @@ struct GoalTrackerApp: App {
     @State private var health = HealthKitManager()
     @State private var notifications = UserNotificationManager()
     @State private var coachNotes = CoachNotesManager()
+    @State private var router: AppRouter
     /// Held here because the notification center only keeps a weak reference to its delegate.
-    private let notificationPresenter = NotificationPresenter()
+    private let notificationPresenter: NotificationPresenter
     private let container: ModelContainer
 
     init() {
+        let router = AppRouter()
+        _router = State(initialValue: router)
+        notificationPresenter = NotificationPresenter(router: router)
         UNUserNotificationCenter.current().delegate = notificationPresenter
         do {
             container = try ModelContainer(for:
@@ -34,6 +38,7 @@ struct GoalTrackerApp: App {
                 .environment(health)
                 .environment(notifications)
                 .environment(coachNotes)
+                .environment(router)
                 .preferredColorScheme(.dark)
                 .tint(Theme.gold)
         }

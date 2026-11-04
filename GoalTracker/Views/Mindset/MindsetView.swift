@@ -5,6 +5,7 @@ struct MindsetView: View {
     @Environment(\.modelContext) private var context
     @Environment(HealthKitManager.self) private var health
     @Environment(UserNotificationManager.self) private var notifications
+    @Environment(AppRouter.self) private var router
 
     @Query private var profiles: [GoalProfile]
     @Query(sort: \SpiritualQuote.createdAt, order: .reverse) private var quotes: [SpiritualQuote]
@@ -13,12 +14,17 @@ struct MindsetView: View {
     @State private var isAddingQuote = false
 
     var body: some View {
+        @Bindable var router = router
         NavigationStack {
             List {
                 Section {
                     EmergencyResetButton { isShowingReset = true }
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets())
+                }
+
+                if let profile = profiles.first, profile.notificationsEnabled {
+                    NextCheckInSection(profile: profile) { router.isShowingCheckIns = true }
                 }
 
                 if let profile = profiles.first {
@@ -43,6 +49,7 @@ struct MindsetView: View {
             .toolbar {
                 Button("Add Quote", systemImage: "plus") { isAddingQuote = true }
             }
+            .navigationDestination(isPresented: $router.isShowingCheckIns) { CheckInsView() }
             .sheet(isPresented: $isAddingQuote) { QuoteEditorView() }
             .fullScreenCover(isPresented: $isShowingReset) { EmergencyResetView() }
         }
@@ -121,6 +128,30 @@ private struct NotificationSettingsSection: View {
             Text("Your coach writes today's and tomorrow's check-ins and refreshes them about every 12 hours, using your latest numbers. Built-in messages fill in when it can't. Each one shows your live countdown.")
         }
         .onChange(of: profile.reminderOverrides) { Task { await reschedule() } }
+    }
+}
+
+/// The coach's next message, readable in the app, with a link to the full day.
+private struct NextCheckInSection: View {
+    let profile: GoalProfile
+    let showAll: () -> Void
+    @Query private var notes: [CoachNote]
+    @Query(sort: \SpiritualQuote.createdAt) private var quotes: [SpiritualQuote]
+
+    var body: some View {
+        TimelineView(.everyMinute) { timeline in
+            let entries = CheckInEntry.schedule(profile: profile, notes: notes, quotes: quotes, now: timeline.date).flatMap(\.entries)
+            Section {
+                if let next = entries.first(where: { $0.time > timeline.date }) {
+                    CheckInRow(entry: next, isNext: true)
+                } else {
+                    Text("No check-ins scheduled.").foregroundStyle(.secondary)
+                }
+                Button("See Today's & Tomorrow's Check-ins", systemImage: "list.bullet", action: showAll)
+            } header: {
+                Text("Next Check-in")
+            }
+        }
     }
 }
 

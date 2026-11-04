@@ -7,6 +7,7 @@ struct RootView: View {
     @Environment(HealthKitManager.self) private var health
     @Environment(UserNotificationManager.self) private var notifications
     @Environment(CoachNotesManager.self) private var coachNotes
+    @Environment(AppRouter.self) private var router
 
     @Query private var profiles: [GoalProfile]
 
@@ -14,15 +15,20 @@ struct RootView: View {
     private var needsOnboarding: Bool { profiles.first?.hasSetDailyRhythm != true }
 
     var body: some View {
-        TabView {
+        @Bindable var router = router
+        TabView(selection: $router.tab) {
             DashboardView()
                 .tabItem { Label("Dashboard", systemImage: "flame.fill") }
+                .tag(AppTab.dashboard)
             TransformationView()
                 .tabItem { Label("Transform", systemImage: "photo.on.rectangle.angled") }
+                .tag(AppTab.transform)
             MindsetView()
                 .tabItem { Label("Mindset", systemImage: "sparkles") }
+                .tag(AppTab.mindset)
             PlanView()
                 .tabItem { Label("Plan", systemImage: "list.bullet.clipboard") }
+                .tag(AppTab.plan)
         }
         .sheet(isPresented: Binding(get: { needsOnboarding }, set: { _ in })) {
             Group {
