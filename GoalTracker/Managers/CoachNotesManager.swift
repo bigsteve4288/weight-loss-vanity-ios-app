@@ -45,7 +45,9 @@ final class CoachNotesManager {
         var latestCritique = FetchDescriptor<CoachCritique>(sortBy: [SortDescriptor(\.date, order: .reverse)])
         latestCritique.fetchLimit = 1
         let summary = CoachViewModel.clientContext(
-            profile: profile, health: health, previous: try? context.fetch(latestCritique).first, now: now
+            profile: profile, health: health, previous: try? context.fetch(latestCritique).first,
+            includeHealthHistory: false, // check-ins land on the Lock Screen
+            now: now
         )
         let recentlyUsed = notes
             .filter { $0.day >= twoWeeksAgo && Self.rememberedCategories.contains($0.category) }

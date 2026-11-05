@@ -149,7 +149,7 @@ struct TargetEngineTests {
     @Test func trendNeedsEnoughSpread() {
         let now = date(2026, 11, 4)
         let close = [WeightPoint(date: date(2026, 11, 3), pounds: 225), WeightPoint(date: now, pounds: 224)]
-        #expect(TargetEngine.weeklyLossRate(close, now: now) == nil)
+        #expect(WeightTrendService.trend(close, now: now, calendar: calendar).actualPoundsPerWeek == nil)
     }
 
     @Test func irregularWeighInsDontProduceAStatusTrend() {
@@ -163,8 +163,8 @@ struct TargetEngineTests {
     @Test func unsortedHistoryGivesTheSameTrend() throws {
         let history = Fixture.history(endingAt: date(2026, 11, 4, hour: 7), days: 10, from: 226, perDay: 0.2)
         let now = date(2026, 11, 4)
-        let forward = try #require(TargetEngine.weeklyLossRate(history, now: now))
-        let backward = try #require(TargetEngine.weeklyLossRate(history.reversed(), now: now))
+        let forward = try #require(WeightTrendService.trend(history, now: now, calendar: calendar).actualPoundsPerWeek)
+        let backward = try #require(WeightTrendService.trend(history.reversed(), now: now, calendar: calendar).actualPoundsPerWeek)
         #expect(abs(forward - backward) < 1e-9)
     }
 }

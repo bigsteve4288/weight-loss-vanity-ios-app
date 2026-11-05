@@ -187,6 +187,9 @@ struct CoachView: View {
     private var footer: some View {
         VStack(spacing: 8) {
             Text("Both photos and your stats are sent to Anthropic's API for each verdict. Nothing is sent until you tap the button.")
+            if profiles.first?.shareHealthHistoryWithCoach == true {
+                Text("Your weight-loss history is included, as set in Goal Settings → Weight-Loss History.")
+            }
             if viewModel.hasAPIKey {
                 Button("Remove Access Code", role: .destructive) { viewModel.removeAPIKey() }
             }

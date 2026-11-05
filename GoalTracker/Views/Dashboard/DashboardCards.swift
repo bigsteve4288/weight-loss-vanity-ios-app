@@ -61,7 +61,7 @@ struct StatusCard: View {
                         systemImage: "heart.text.square"
                     )
                 }
-                if snapshot.currentWeight != nil, plan.needsAdjustment {
+                if snapshot.currentWeight != nil, plan.needsAdjustment || plan.feasibility == .exceedsSustainable {
                     adjustment
                 }
                 if snapshot.currentWeight != nil, plan.weightIsStale {
@@ -75,10 +75,10 @@ struct StatusCard: View {
     private var trendLine: some View {
         let planText = "plan \(plan.recommendedPoundsPerWeek.formatted(oneDecimal)) lb/week"
         if let actual = snapshot.actualPoundsPerWeek {
-            Text("14-day trend: \(actual, format: oneDecimal) lb/week · \(planText)")
+            Text("Measured trend: \(actual, format: oneDecimal) lb/week · \(planText)")
                 .font(.caption.weight(.semibold).monospacedDigit())
         } else {
-            Text("Trend: needs 3+ weigh-ins over 5+ days · \(planText)")
+            Text("Trend: needs 4+ weigh-in days over a week · \(planText)")
                 .font(.caption.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.secondary)
         }
@@ -87,7 +87,13 @@ struct StatusCard: View {
     @ViewBuilder
     private var adjustment: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if plan.feasibility == .exceedsSustainable {
+            if !plan.needsAdjustment {
+                Text("SAFER ALTERNATIVE (OPTIONAL)")
+                    .font(.caption2.weight(.heavy))
+                    .tracking(1)
+                    .foregroundStyle(.orange)
+            }
+            if plan.feasibility == .exceedsSustainable, plan.intensity == .standard {
                 Text("Reaching \(plan.targetWeight.formatted(oneDecimal)) lb by \(plan.targetDate.formatted(shortDate)) would take \(plan.requiredPoundsPerWeek.formatted(oneDecimal)) lb/week (roughly \(plan.requiredDailyDeficitEstimate.formatted(wholeNumber)) kcal/day). That's above the ~\(plan.sustainablePace.upperBound.formatted(oneDecimal)) lb/week that's sustainable for you, so the plan doesn't chase it.")
             }
             if let atDeadline = plan.projectedWeightAtDeadline {
@@ -97,7 +103,9 @@ struct StatusCard: View {
                 Text("\(plan.targetWeight.formatted(oneDecimal)) lb projected \(dates.lowerBound.formatted(longDate)) – \(dates.upperBound.formatted(longDate)).")
             }
             if let suggested = plan.suggestedTargetDate {
-                Text("Consider moving the date to \(suggested.formatted(longDate)) in Goal Settings.")
+                Text(plan.needsAdjustment
+                     ? "Consider moving the date to \(suggested.formatted(longDate)) in Goal Settings."
+                     : "A date that fits a steady pace would be \(suggested.formatted(longDate)). Your goal stays as you set it.")
                     .foregroundStyle(Theme.goldLight)
             }
             Text("Projections are estimates, not promises.")

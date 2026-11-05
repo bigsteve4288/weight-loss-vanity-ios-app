@@ -49,9 +49,21 @@ enum GoalFeasibility: Equatable, Sendable {
     }
 }
 
+/// How far the deadline's required pace is beyond the plan's maximum. Shown as a persistent indicator.
+enum PaceRisk: Int, Comparable, Equatable, Sendable {
+    case none = 0
+    /// Required pace is above the sustainable maximum.
+    case elevated = 1
+    /// Required pace is more than twice the sustainable maximum.
+    case severe = 2
+
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
 /// Three separate things: what the user is aiming for, what the deadline alone would demand,
-/// and the sustainable plan the app actually coaches toward.
+/// and the sustainable plan the app actually coaches toward. The goal is never altered here.
 struct GoalPlan: Equatable, Sendable {
+    let intensity: GoalIntensity
     // 1. The aspiration.
     let targetWeight: Double
     let targetDate: Date
@@ -78,8 +90,16 @@ struct GoalPlan: Equatable, Sendable {
     let suggestedTargetDate: Date?
     /// True when the latest weigh-in is too old to plan from confidently.
     let weightIsStale: Bool
+    let risk: PaceRisk
+    /// The plan's pace implies more deficit than the app will ever suggest (a clinician pace above the cap).
+    let deficitCappedByApp: Bool
+    /// The pace limit came from the user's clinician rather than general guidance.
+    let usesClinicianPace: Bool
 
-    var needsAdjustment: Bool { feasibility == .exceedsSustainable || feasibility == .deadlinePassed }
+    /// Standard mode asks the user to reconsider the date. Aggressive and Clinician-Guided keep it and offer alternatives.
+    var needsAdjustment: Bool {
+        feasibility == .deadlinePassed || (feasibility == .exceedsSustainable && intensity == .standard)
+    }
 
     static let estimateDisclaimer = "Calorie figures use the 3,500 kcal per pound rule of thumb. It's a rough estimate that tends to overstate loss over months, because your burn falls as you lose weight. Your measured trend is the better guide."
 }
@@ -95,6 +115,9 @@ enum WeightGoalEngine {
         var targetDate: Date
         var currentWeight: Double
         var latestWeightDate: Date?
+        var intensity: GoalIntensity = .standard
+        /// Only used in Clinician-Guided mode, and only when the user entered one.
+        var clinicianMaxPoundsPerWeek: Double?
         var policy: PacePolicy = .standard
         var now: Date = .now
         var calendar: Calendar = .current
@@ -105,16 +128,18 @@ enum WeightGoalEngine {
         let policy = input.policy
         let remaining = max(input.currentWeight - input.targetWeight, 0)
         let days = daysRemaining(from: input.now, to: input.targetDate, calendar: calendar)
+        // A deadline of today still has today left: treat it as one day rather than dividing by zero.
         let weeks = Double(max(days, 1)) / 7
 
-        let maximum = policy.sustainableMaximum(forWeight: input.currentWeight)
-        let steady = policy.typicalPace(forWeight: input.currentWeight)
+        let clinicianPace = input.intensity == .clinicianGuided ? input.clinicianMaxPoundsPerWeek.flatMap { $0 > 0 ? $0 : nil } : nil
+        let maximum = clinicianPace ?? policy.sustainableMaximum(forWeight: input.currentWeight)
+        let steady = min(policy.typicalPace(forWeight: input.currentWeight), maximum)
         let required = remaining / weeks
 
         let feasibility: GoalFeasibility
         if remaining <= 0 {
             feasibility = .achieved
-        } else if days <= 0 {
+        } else if days < 0 {
             feasibility = .deadlinePassed
         } else if required <= steady {
             feasibility = .comfortable
@@ -132,10 +157,11 @@ enum WeightGoalEngine {
         case .exceedsSustainable: maximum
         case .deadlinePassed: steady
         }
-        let recommendedDeficit = min(recommended * caloriesPerPound / 7, policy.maximumDailyDeficit)
+        let impliedDeficit = recommended * caloriesPerPound / 7
+        let recommendedDeficit = min(impliedDeficit, policy.maximumDailyDeficit)
 
         var projectedAtDeadline: ClosedRange<Double>?
-        if days > 0, remaining > 0 {
+        if days >= 0, remaining > 0 {
             let best = max(input.currentWeight - maximum * weeks, input.targetWeight)
             let steadyWeight = max(input.currentWeight - steady * weeks, input.targetWeight)
             projectedAtDeadline = best...steadyWeight
@@ -147,6 +173,7 @@ enum WeightGoalEngine {
             let earliest = date(after: remaining / maximum, from: input.now, calendar: calendar)
             let steadyDate = date(after: remaining / steady, from: input.now, calendar: calendar)
             projectedDate = earliest...steadyDate
+            // Offered as an option in every mode; never applied automatically.
             if feasibility == .exceedsSustainable || feasibility == .deadlinePassed {
                 suggested = steadyDate
             }
@@ -156,13 +183,16 @@ enum WeightGoalEngine {
             (calendar.dateComponents([.day], from: $0, to: input.now).day ?? 0) > staleWeightDays
         } ?? true
 
+        let risk: PaceRisk = feasibility != .exceedsSustainable ? .none : required > maximum * 2 ? .severe : .elevated
+
         return GoalPlan(
+            intensity: input.intensity,
             targetWeight: input.targetWeight,
             targetDate: input.targetDate,
             daysRemaining: days,
             poundsRemaining: remaining,
-            requiredPoundsPerWeek: days > 0 ? required : 0,
-            requiredDailyDeficitEstimate: days > 0 ? remaining * caloriesPerPound / Double(days) : 0,
+            requiredPoundsPerWeek: days >= 0 ? required : 0,
+            requiredDailyDeficitEstimate: days >= 0 ? remaining * caloriesPerPound / Double(max(days, 1)) : 0,
             feasibility: feasibility,
             sustainablePace: steady...maximum,
             recommendedPoundsPerWeek: recommended,
@@ -170,7 +200,10 @@ enum WeightGoalEngine {
             projectedWeightAtDeadline: projectedAtDeadline,
             projectedTargetDate: projectedDate,
             suggestedTargetDate: suggested,
-            weightIsStale: stale
+            weightIsStale: stale,
+            risk: risk,
+            deficitCappedByApp: impliedDeficit > policy.maximumDailyDeficit + 0.5,
+            usesClinicianPace: clinicianPace != nil
         )
     }
 

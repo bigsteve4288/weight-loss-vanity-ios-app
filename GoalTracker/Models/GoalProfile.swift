@@ -24,6 +24,29 @@ final class GoalProfile {
     var reminderOverrides: [String: Int] = [:]
     var hasSetDailyRhythm: Bool = false
 
+    // Goal mode. Every property below has a default so existing profiles migrate without losing data.
+    /// `GoalIntensity.rawValue`.
+    var goalIntensityRaw: String = "standard"
+    var aggressiveAcknowledgedVersion: Int = 0
+    var aggressiveAcknowledgedAt: Date?
+    /// Required pace when the user acknowledged Aggressive mode, so a big rise can surface a fresh warning.
+    var aggressiveAcknowledgedRequiredPace: Double?
+    /// Clinician-Guided mode: the weekly pace limit the user's clinician gave them. Never inferred.
+    var clinicianMaxPoundsPerWeek: Double?
+
+    // Optional weight-loss history. Stays on this device; sent to the AI Coach only with `shareHealthHistoryWithCoach`.
+    /// `BariatricHistory.rawValue`.
+    var bariatricHistoryRaw: String = "notAnswered"
+    /// `SurgeryType.rawValue`.
+    var surgeryTypeRaw: String?
+    var surgeryDate: Date?
+    var clinicianNutritionGoals: String = ""
+    var clinicianProteinGrams: Double?
+    var clinicianExerciseRestrictions: String = ""
+    var lastClinicalReviewDate: Date?
+    var weightLossNotes: String = ""
+    var shareHealthHistoryWithCoach: Bool = false
+
     init(
         startWeightLbs: Double,
         lossGoalLbs: Double = 34,

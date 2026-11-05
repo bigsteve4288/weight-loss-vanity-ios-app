@@ -16,6 +16,10 @@ struct DashboardView: View {
                         StatusCard(snapshot: snapshot)
                         EmergencyResetButton { viewModel.isShowingEmergencyReset = true }
                         TargetCard(snapshot: snapshot, startWeight: profile.startWeightLbs)
+                        PaceCard(
+                            snapshot: snapshot,
+                            acknowledgedRequiredPace: profile.intensity == .aggressive ? profile.aggressiveAcknowledgedRequiredPace : nil
+                        )
                         CountdownCard(targetDate: profile.targetDate)
                         DeficitCard(snapshot: snapshot)
                         MacrosCard(carbs: health.carbsGrams, protein: health.proteinGrams, fat: health.fatGrams)

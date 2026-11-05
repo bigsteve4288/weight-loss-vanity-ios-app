@@ -37,6 +37,8 @@ extension TargetEngine {
             workouts: health.workoutEnergyToday,
             restingCaloriesPerDay: profile.restingCaloriesPerDay,
             rhythm: profile.dailyRhythm,
+            intensity: profile.intensity,
+            clinicianMaxPoundsPerWeek: profile.effectiveClinicianMaxPoundsPerWeek,
             now: now
         ))
     }

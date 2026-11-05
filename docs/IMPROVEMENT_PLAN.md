@@ -60,6 +60,19 @@ Living checklist for the product improvement plan. Update it as phases land.
 - Dashboard: status card shows trend vs. plan and a goal-adjustment panel with projections. The deficit card reads "Today So Far" until the day is complete, labels estimates, and lists data-quality notes. The visual style is unchanged.
 - Coach: context carries plan, feasibility, completeness and data notes. Shared `CoachSafety.rules` in both prompts for all tones. Drill Sergeant challenges habits, not bodies.
 
+## 4b. Phase 1.5 — Aggressive Goal Mode & pace tracking
+
+- **Goal modes** (`Models/GoalIntensity.swift`): Standard / Aggressive / Clinician-Guided, stored on `GoalProfile` (`goalIntensityRaw`, defaulted, so existing profiles migrate in place). The goal weight and date are never changed by the app in any mode.
+- **Aggressive acknowledgment**: shown once per text version (`AggressiveMode.acknowledgmentVersion`), stored with date and the required pace at the time. If the required pace rises ≥ 1 lb/week afterwards, YOUR PACE and the coach surface a new warning.
+- **Clinician-Guided**: an optional clinician pace limit replaces general guidance for feasibility, but the app's suggested deficit stays capped at 1,000 kcal/day. Without an entered value, general guidance applies.
+- **Weight-loss history** (`Views/Settings/WeightLossHistoryView.swift`): optional bariatric history, surgery type/date, clinician nutrition/protein/exercise guidance, last review, notes. It never changes the pace. It's sent to the coach only with `shareHealthHistoryWithCoach`, and never in the check-in (notification) context.
+- **Goal history** (`Models/GoalChange.swift`): appended only when the user changes the goal or mode.
+- **`WeightTrendService`**: one median per local day (absorbs duplicate syncs), Theil–Sen slope over 14- and 28-day windows (14: 4+ days over 7+; 28: 6+ days over 14+), IQR uncertainty band, 7-day smoothing that never bridges gaps, stale after 7 days without a weigh-in. It replaces the old least-squares `weeklyLossRate`.
+- **`GoalForecastService`**: `PaceAssessment` (required vs. actual, tolerance max(0.25, 10% of required) → AHEAD / ON PACE / BEHIND / INSUFFICIENT DATA / GOAL REACHED / DEADLINE PASSED) and `GoalForecast`. It uses the slower of the two trends, gives ranges, lowers confidence beyond 4×/8× the observed span, and doesn't project from flat, rising, stale or thin trends or beyond two years.
+- **Separation**: `TargetSnapshot.status` is daily accountability. `TargetSnapshot.pace` is the trajectory against the user's own deadline. GOAL NEEDS ADJUSTMENT is Standard-only.
+- **Dashboard**: new **YOUR PACE** card after the Target Engine card. In non-standard modes the status card shows a "safer alternative (optional)" panel instead of asking the user to move the date.
+- **Edge fix**: a deadline of *today* is no longer reported as passed.
+
 ## 5. Checklist
 
 ### P0 — Phase 1 (done, pending device testing)
@@ -71,9 +84,16 @@ Living checklist for the product improvement plan. Update it as phases land.
 - [x] Coach context + safety rules updated
 - [ ] Verify on device with real Feelfit / Carb Manager / Peloton / NRC data (simulator has no Health data)
 
+### Phase 1.5 (done, pending device testing)
+- [x] Goal modes + one-time versioned acknowledgment + elevated-risk indicator
+- [x] Optional bariatric / clinician history with coach consent; excluded from notifications
+- [x] Robust actual pace (Theil–Sen, 14/28-day), required pace, pace difference, trajectory status
+- [x] Trend-based forecast with ranges and confidence; never modifies the goal
+- [x] YOUR PACE card; coach pace/mode context
+- [ ] Device check of the YOUR PACE card and settings flows with real data
+
 ### P1 — Phase 2/3
-- [ ] `WeightTrendService`: 7-day smoothing, 14/28-day trends, uncertainty
-- [ ] `GoalForecastService`: forecast from the measured trend with confidence labels
+- [ ] Chart the `WeightTrendService` smoothed line and the forecast (services exist since Phase 1.5)
 - [ ] Chart: actual + smoothed + goal trajectory + forecast, 7/30/90-day ranges; no smoothing across gaps
 - [ ] Compact top dashboard summary with the next action
 - [ ] Coach Q&A over the user's own data; persistent coaching context in SwiftData

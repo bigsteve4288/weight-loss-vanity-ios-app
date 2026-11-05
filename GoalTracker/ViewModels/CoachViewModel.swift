@@ -52,7 +52,15 @@ final class CoachViewModel {
     }
 
     /// Plain-text briefing of the client's numbers so the critique can reference real data.
-    static func clientContext(profile: GoalProfile?, health: HealthKitManager, previous: CoachCritique?, now: Date = .now) -> String {
+    /// - Parameter includeHealthHistory: pass `false` for anything that could end up on the Lock Screen
+    ///   (check-in notes). Even when `true`, history is only included if the user opted in.
+    static func clientContext(
+        profile: GoalProfile?,
+        health: HealthKitManager,
+        previous: CoachCritique?,
+        includeHealthHistory: Bool = true,
+        now: Date = .now
+    ) -> String {
         var lines = ["CLIENT DATA"]
         let lbs = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(1))
         let kcal = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(0))
@@ -70,7 +78,11 @@ final class CoachViewModel {
             } else {
                 lines.append("- Current weight: no weigh-ins in Apple Health yet.")
             }
+            lines.append(contentsOf: paceLines(snapshot, acknowledgedRequiredPace: profile.intensity == .aggressive ? profile.aggressiveAcknowledgedRequiredPace : nil))
             lines.append(contentsOf: planLines(plan))
+            if includeHealthHistory, profile.shareHealthHistoryWithCoach {
+                lines.append(contentsOf: healthHistoryLines(profile.healthHistory))
+            }
             let actual = snapshot.actualPoundsPerWeek.map { "\($0.formatted(lbs)) lb/week" } ?? "not enough weigh-ins yet (needs 3+ over 5+ days)"
             lines.append("- Measured 14-day trend: \(actual).\(snapshot.paceAboveSustainable ? " That's faster than sustainable; make sure they're eating enough rather than praising the speed." : "")")
             lines.append("- Dashboard status: \(snapshot.status.title).")
@@ -163,6 +175,85 @@ final class CoachViewModel {
         }
         if intake.canJudgeDeficit {
             lines.append("- Today's estimated deficit: \(snapshot.todayDeficit.formatted(kcal)) kcal vs a plan of about \(snapshot.plan.recommendedDailyDeficitEstimate.formatted(kcal)).")
+        }
+        return lines
+    }
+
+    /// The user's own goal against their measured trend. The goal is reported as-is in every mode.
+    nonisolated static func paceLines(_ snapshot: TargetSnapshot, acknowledgedRequiredPace: Double? = nil) -> [String] {
+        let lbs = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(1))
+        let whole = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(0))
+        let plan = snapshot.plan
+        let pace = snapshot.pace
+        let forecast = snapshot.forecast
+        var lines = ["- Goal mode: \(plan.intensity.label). \(plan.intensity.explanation)"]
+
+        switch pace.status {
+        case .goalReached:
+            lines.append("- Goal trajectory: GOAL REACHED.")
+            return lines
+        case .deadlinePassed:
+            lines.append("- Goal trajectory: DEADLINE PASSED. Don't calculate a catch-up pace; they can set a new date if they want.")
+        case .insufficientData:
+            lines.append("- Required pace for their deadline: \(pace.requiredPoundsPerWeek.formatted(lbs)) lb/week. Actual pace: not enough weigh-ins for a reliable trend, so don't guess one.")
+        default:
+            let actual = pace.actualPoundsPerWeek ?? 0
+            let actualText = pace.isGaining ? "gaining about \(abs(actual).formatted(lbs)) lb/week" : "\(actual.formatted(lbs)) lb/week"
+            lines.append("- Required pace for their deadline: \(pace.requiredPoundsPerWeek.formatted(lbs)) lb/week. Actual measured pace: \(actualText) (from weigh-ins, \(snapshot.trend.confidence.rawValue) confidence).")
+            lines.append("- Goal trajectory: \(pace.status.title)\(pace.differenceSummary.map { " — \($0)" } ?? "").")
+        }
+
+        switch forecast.state {
+        case .projected:
+            if let date = forecast.projectedGoalDate {
+                lines.append("- Projected goal date at the observed pace: around \(date.formatted(.dateTime.month(.wide).year())) (estimate, \(forecast.confidence.rawValue) confidence). Say it at month precision.")
+            }
+        case let .notProjected(reason):
+            lines.append("- Projected goal date: \(reason)")
+        case .goalReached:
+            break
+        }
+        if let weight = forecast.projectedWeightAtDeadline {
+            lines.append("- Projected weight on their deadline: about \(weight.lowerBound.formatted(whole))–\(weight.upperBound.formatted(whole)) lb (estimate).")
+        }
+
+        if plan.intensity != .standard {
+            lines.append("- They chose to keep their exact target and deadline. Report the gap honestly and don't tell them to change the goal. Never suggest closing the gap with more restriction or extra exercise; coach consistent logging, planned workouts and recovery.")
+            if plan.risk > .none {
+                let risen = acknowledgedRequiredPace.map { plan.requiredPoundsPerWeek - $0 >= AggressiveMode.newWarningPaceIncrease } ?? false
+                lines.append(risen
+                    ? "- The required pace has risen meaningfully since they acknowledged the aggressive target. Briefly suggest reviewing the target with their healthcare professional."
+                    : "- They've already acknowledged that this pace is above common guidance. Mention it at most once, briefly; don't repeat the warning.")
+            }
+        }
+        return lines
+    }
+
+    /// Optional health background, sent only with consent. Emphasis shifts; the safe pace never rises because of it.
+    nonisolated static func healthHistoryLines(_ history: HealthHistoryContext) -> [String] {
+        guard history.hasAnything else { return [] }
+        var lines = ["- Health background (shared by the user, treat as private):"]
+        if history.bariatric == .yes {
+            var surgery = "  • Previous bariatric surgery"
+            if let type = history.surgeryType { surgery += ": \(type.label.lowercased())" }
+            if let date = history.surgeryDate { surgery += ", around \(date.formatted(.dateTime.month(.wide).year()))" }
+            lines.append(surgery + ".")
+            lines.append("  • Put extra weight on adequate protein, hydration, nutritional adequacy, recovery and physical symptoms, and on follow-up with their bariatric care team. Rapid loss right after surgery doesn't mean the same pace is safe now.")
+        }
+        if let protein = history.clinicianProteinGrams {
+            lines.append("  • Clinician protein target: \(Int(protein)) g/day.")
+        }
+        if !history.clinicianNutritionGoals.isEmpty {
+            lines.append("  • Clinician nutrition goals: \(history.clinicianNutritionGoals)")
+        }
+        if !history.clinicianExerciseRestrictions.isEmpty {
+            lines.append("  • Exercise restrictions from their clinician (respect these in every order): \(history.clinicianExerciseRestrictions)")
+        }
+        if let review = history.lastClinicalReview {
+            lines.append("  • Last clinical review: \(review.formatted(.dateTime.month(.wide).year())).")
+        }
+        if !history.notes.isEmpty {
+            lines.append("  • Their notes: \(history.notes)")
         }
         return lines
     }

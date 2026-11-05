@@ -6,8 +6,9 @@ struct WeightPoint: Identifiable, Hashable, Sendable {
     let pounds: Double
 }
 
-/// The dashboard's daily verdict. It grades the measured trend against a *sustainable* plan, never
-/// a partial day against a deadline-driven deficit, and treats missing data as missing, not as failure.
+/// The daily accountability verdict: behaviour, logging and the measured trend against a *sustainable*
+/// plan. Whether the trend is fast enough for the user's own deadline is a separate assessment
+/// (`PaceAssessment`). Never grades a partial day against a deadline-driven deficit.
 enum TrackStatus: Equatable, Sendable {
     case needsData
     case goalReached
@@ -23,7 +24,7 @@ enum TrackStatus: Equatable, Sendable {
         case .needsData: "AWAITING DATA"
         case .goalReached: "GOAL REACHED"
         case .deadlinePassed: "TARGET DATE PASSED"
-        case .onTrack: "ON TRACK"
+        case .onTrack: "ON TRACK TODAY"
         case .buildingMomentum: "BUILDING MOMENTUM"
         case .needsAttention: "NEEDS ATTENTION"
         case .loggingIncomplete: "LOGGING INCOMPLETE"
@@ -65,7 +66,12 @@ struct TargetSnapshot: Sendable {
     let todayDeficit: Double
     /// Measured trend over the trailing window; nil when there isn't enough data.
     let actualPoundsPerWeek: Double?
+    /// Daily accountability.
     let status: TrackStatus
+    /// Goal trajectory against the user's own deadline.
+    let pace: PaceAssessment
+    let forecast: GoalForecast
+    let trend: WeightTrend
     /// True when the deadline needs more than the sustainable maximum.
     let exceedsSafePace: Bool
     /// True when the measured trend is faster than the sustainable maximum.
@@ -78,9 +84,6 @@ struct TargetSnapshot: Sendable {
 /// Pure calculation layer: turns goal settings + HealthKit numbers into a status snapshot.
 enum TargetEngine {
     static let caloriesPerPound = WeightGoalEngine.caloriesPerPound
-    /// Weigh-ins needed (and the days they must span) before the trend is used for the status.
-    static let minimumTrendReadings = 3
-    static let minimumTrendSpanDays = 5.0
 
     struct Input {
         var startWeight: Double
@@ -97,6 +100,8 @@ enum TargetEngine {
         var workouts: [WorkoutEnergy] = []
         var restingCaloriesPerDay: Double
         var rhythm: DailyRhythm
+        var intensity: GoalIntensity = .standard
+        var clinicianMaxPoundsPerWeek: Double?
         var policy: PacePolicy = .standard
         var now: Date = .now
         var calendar: Calendar = .current
@@ -113,6 +118,8 @@ enum TargetEngine {
             targetDate: input.targetDate,
             currentWeight: weight,
             latestWeightDate: input.latestWeightDate,
+            intensity: input.intensity,
+            clinicianMaxPoundsPerWeek: input.clinicianMaxPoundsPerWeek,
             policy: input.policy,
             now: input.now,
             calendar: input.calendar
@@ -126,10 +133,11 @@ enum TargetEngine {
             calendar: input.calendar
         ))
         let intake = IntakeAssessor.assess(input.nutrition, rhythm: input.rhythm, now: input.now, calendar: input.calendar)
-        let actual = weeklyLossRate(
-            input.history, now: input.now, minimumReadings: minimumTrendReadings, minimumSpanDays: minimumTrendSpanDays
-        )
-        let sustainableMax = input.policy.sustainableMaximum(forWeight: weight)
+        let trend = WeightTrendService.trend(input.history, now: input.now, calendar: input.calendar)
+        let actual = trend.actualPoundsPerWeek
+        let pace = GoalForecastService.assessPace(plan: plan, trend: trend)
+        let forecast = GoalForecastService.forecast(plan: plan, trend: trend, currentWeight: weight, now: input.now, calendar: input.calendar)
+        let sustainableMax = plan.sustainablePace.upperBound
 
         let status: TrackStatus
         if input.currentWeight == nil {
@@ -140,7 +148,8 @@ enum TargetEngine {
             status = .deadlinePassed
         } else if let actual, actual >= plan.recommendedPoundsPerWeek * 0.8 {
             status = .onTrack
-        } else if plan.feasibility == .exceedsSustainable {
+        } else if plan.feasibility == .exceedsSustainable, input.intensity == .standard {
+            // Aggressive and Clinician-Guided users chose to keep the date; they see the gap on YOUR PACE instead.
             status = .goalNeedsAdjustment
         } else if intake.state == .missingLogs {
             status = .loggingIncomplete
@@ -165,6 +174,9 @@ enum TargetEngine {
             todayDeficit: energy.total - input.nutrition.calories,
             actualPoundsPerWeek: actual,
             status: status,
+            pace: pace,
+            forecast: forecast,
+            trend: trend,
             exceedsSafePace: plan.feasibility == .exceedsSustainable,
             paceAboveSustainable: (actual ?? 0) > sustainableMax + 0.25,
             plan: plan,
@@ -179,36 +191,5 @@ enum TargetEngine {
 
     static func fractionOfDayElapsed(_ now: Date, calendar: Calendar = .current) -> Double {
         EnergyBalance.fractionOfDayElapsed(now, calendar: calendar)
-    }
-
-    /// Least-squares slope of weight over the trailing window, as pounds lost per week (positive = losing).
-    static func weeklyLossRate(
-        _ history: [WeightPoint],
-        now: Date,
-        windowDays: Int = 14,
-        minimumReadings: Int = 2,
-        minimumSpanDays: Double = 3
-    ) -> Double? {
-        let cutoff = now.addingTimeInterval(-Double(windowDays) * 86_400)
-        let points = history.filter { $0.date >= cutoff && $0.date <= now }
-        guard points.count >= minimumReadings,
-              let first = points.map(\.date).min(),
-              let last = points.map(\.date).max(),
-              last.timeIntervalSince(first) >= minimumSpanDays * 86_400
-        else { return nil }
-
-        let xs = points.map { $0.date.timeIntervalSince(first) / 86_400 }
-        let ys = points.map(\.pounds)
-        let n = Double(points.count)
-        let meanX = xs.reduce(0, +) / n
-        let meanY = ys.reduce(0, +) / n
-        var numerator = 0.0
-        var denominator = 0.0
-        for (x, y) in zip(xs, ys) {
-            numerator += (x - meanX) * (y - meanY)
-            denominator += (x - meanX) * (x - meanX)
-        }
-        guard denominator > 0 else { return nil }
-        return -(numerator / denominator) * 7
     }
 }
