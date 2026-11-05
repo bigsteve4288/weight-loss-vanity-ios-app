@@ -25,7 +25,7 @@ struct DashboardView: View {
                         MacrosCard(carbs: health.carbsGrams, protein: health.proteinGrams, fat: health.fatGrams)
                         WorkoutsCard(workouts: health.recentWorkouts)
                         if !health.weightHistory.isEmpty {
-                            WeightTrendCard(points: health.weightHistory, target: snapshot.targetWeight)
+                            WeightTrendCard(snapshot: snapshot, goalStartDate: profile.startDate, goalStartWeight: profile.startWeightLbs)
                         }
                         HealthSyncFooter()
                     }

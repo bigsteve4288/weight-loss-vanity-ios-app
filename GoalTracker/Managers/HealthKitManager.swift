@@ -72,7 +72,8 @@ final class HealthKitManager {
         let calendar = Calendar.current
         let dayStart = calendar.startOfDay(for: now)
 
-        weightHistory = await fetchWeightHistory(days: 90)
+        // 90 days on screen, plus a week before so the 7-day average has data at the left edge.
+        weightHistory = await fetchWeightHistory(days: 97)
         if let latest = await fetchLatestWeight() {
             latestWeightLbs = latest.pounds
             latestWeightDate = latest.date

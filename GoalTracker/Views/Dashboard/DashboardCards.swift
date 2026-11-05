@@ -1,4 +1,3 @@
-import Charts
 import SwiftUI
 
 extension TrackStatus {
@@ -315,44 +314,6 @@ struct MacrosCard: View {
                     .font(.system(.title2, design: .rounded, weight: .black).monospacedDigit())
                     .foregroundStyle(color)
                 Text("g").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-struct WeightTrendCard: View {
-    let points: [WeightPoint]
-    let target: Double
-
-    private var domain: ClosedRange<Double> {
-        let values = points.map(\.pounds) + [target]
-        return ((values.min() ?? target) - 2)...((values.max() ?? target) + 2)
-    }
-
-    var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 12) {
-                CardHeader(title: "90-Day Trend", systemImage: "chart.line.downtrend.xyaxis")
-                Chart {
-                    ForEach(points) { point in
-                        LineMark(x: .value("Date", point.date), y: .value("Weight", point.pounds))
-                            .interpolationMethod(.catmullRom)
-                            .foregroundStyle(Theme.gold)
-                        AreaMark(x: .value("Date", point.date), yStart: .value("Base", domain.lowerBound), yEnd: .value("Weight", point.pounds))
-                            .interpolationMethod(.catmullRom)
-                            .foregroundStyle(LinearGradient(colors: [Theme.gold.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom))
-                    }
-                    RuleMark(y: .value("Target", target))
-                        .foregroundStyle(Theme.red)
-                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                        .annotation(position: .top, alignment: .leading) {
-                            Text("TARGET \(target, format: oneDecimal)")
-                                .font(.caption2.weight(.heavy))
-                                .foregroundStyle(Theme.red)
-                        }
-                }
-                .chartYScale(domain: domain)
-                .frame(height: 200)
             }
         }
     }

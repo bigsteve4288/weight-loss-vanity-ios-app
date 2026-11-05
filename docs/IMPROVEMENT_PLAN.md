@@ -93,8 +93,8 @@ Living checklist for the product improvement plan. Update it as phases land.
 - [ ] Device check of the YOUR PACE card and settings flows with real data
 
 ### P1 — Phase 2/3
-- [ ] Chart the `WeightTrendService` smoothed line and the forecast (services exist since Phase 1.5)
-- [ ] Chart: actual + smoothed + goal trajectory + forecast, 7/30/90-day ranges; no smoothing across gaps
+- [x] Chart the `WeightTrendService` smoothed line and the forecast (services exist since Phase 1.5)
+- [x] Chart: actual + smoothed + goal trajectory + forecast, 7/30/90-day ranges; no smoothing across gaps (`WeightChartModel`, `WeightTrendCard`)
 - [ ] Compact top dashboard summary with the next action
 - [ ] Coach Q&A over the user's own data; persistent coaching context in SwiftData
 - [ ] Daily commitments (accept / edit / dismiss / complete)
