@@ -6,13 +6,17 @@ struct WeightPoint: Identifiable, Hashable, Sendable {
     let pounds: Double
 }
 
+/// The dashboard's daily verdict. It grades the measured trend against a *sustainable* plan, never
+/// a partial day against a deadline-driven deficit, and treats missing data as missing, not as failure.
 enum TrackStatus: Equatable, Sendable {
     case needsData
     case goalReached
     case deadlinePassed
     case onTrack
-    case pushHarder
-    case deficitNeeded
+    case buildingMomentum
+    case needsAttention
+    case loggingIncomplete
+    case goalNeedsAdjustment
 
     var title: String {
         switch self {
@@ -20,8 +24,10 @@ enum TrackStatus: Equatable, Sendable {
         case .goalReached: "GOAL REACHED"
         case .deadlinePassed: "TARGET DATE PASSED"
         case .onTrack: "ON TRACK"
-        case .pushHarder: "PUSH HARDER TODAY"
-        case .deficitNeeded: "DEFICIT NEEDED"
+        case .buildingMomentum: "BUILDING MOMENTUM"
+        case .needsAttention: "NEEDS ATTENTION"
+        case .loggingIncomplete: "LOGGING INCOMPLETE"
+        case .goalNeedsAdjustment: "GOAL NEEDS ADJUSTMENT"
         }
     }
 
@@ -29,10 +35,12 @@ enum TrackStatus: Equatable, Sendable {
         switch self {
         case .needsData: "Connect Apple Health or log a weigh-in to start the engine."
         case .goalReached: "Target weight hit. Set the next standard."
-        case .deadlinePassed: "The target date has passed. Reset the date and keep going."
-        case .onTrack: "Your pace meets the goal. Keep stacking days."
-        case .pushHarder: "You're in a deficit, but not enough for the pace you need. Add a workout or tighten intake."
-        case .deficitNeeded: "You're at or above maintenance today. Close the gap."
+        case .deadlinePassed: "The target date has passed. Set a new date and keep the progress going."
+        case .onTrack: "Your trend matches a sustainable plan. Keep stacking normal days."
+        case .buildingMomentum: "Moving in the right direction. Keep the routine steady and keep weighing in."
+        case .needsAttention: "Your trend has flattened or ticked up. Review this week's logging and routine and make one adjustment. No crash fixes."
+        case .loggingIncomplete: "Some of today's meals aren't logged yet. Log them when you can so today's numbers mean something."
+        case .goalNeedsAdjustment: "Your date needs a faster pace than is sustainable. Follow the steady plan and consider moving the date."
         }
     }
 }
@@ -45,107 +53,148 @@ struct TargetSnapshot: Sendable {
     /// 0...1 progress toward the loss goal.
     let progress: Double
     let daysRemaining: Int
+    /// What the deadline alone would demand. Context only.
     let requiredPoundsPerWeek: Double
+    /// Rough 3,500 kcal/lb estimate of the deadline's daily deficit. Context only, never an instruction.
     let requiredDailyDeficit: Double
+    /// Food logged so far today.
+    let caloriesConsumed: Double
+    /// Burn so far today (resting + active), including estimates where data is missing.
     let todayBurn: Double
+    /// Burn so far minus food logged so far. Only meaningful when `intake.canJudgeDeficit`.
     let todayDeficit: Double
     /// Measured trend over the trailing window; nil when there isn't enough data.
     let actualPoundsPerWeek: Double?
     let status: TrackStatus
-    /// True when the required pace exceeds the commonly cited 2 lb/week safe maximum.
+    /// True when the deadline needs more than the sustainable maximum.
     let exceedsSafePace: Bool
+    /// True when the measured trend is faster than the sustainable maximum.
+    let paceAboveSustainable: Bool
+    let plan: GoalPlan
+    let energy: EnergySummary
+    let intake: IntakeAssessment
 }
 
 /// Pure calculation layer: turns goal settings + HealthKit numbers into a status snapshot.
 enum TargetEngine {
-    static let caloriesPerPound = 3500.0
-    static let maxSafePoundsPerWeek = 2.0
+    static let caloriesPerPound = WeightGoalEngine.caloriesPerPound
+    /// Weigh-ins needed (and the days they must span) before the trend is used for the status.
+    static let minimumTrendReadings = 3
+    static let minimumTrendSpanDays = 5.0
 
     struct Input {
         var startWeight: Double
         var lossGoal: Double
         var targetDate: Date
         var currentWeight: Double?
+        var latestWeightDate: Date?
         var history: [WeightPoint]
-        var caloriesConsumed: Double
+        var nutrition: NutritionLog
+        /// Active energy from Apple Health samples (source-de-duplicated by HealthKit).
         var activeBurn: Double
+        /// Resting energy from Apple Health so far today.
         var basalBurn: Double
+        var workouts: [WorkoutEnergy] = []
         var restingCaloriesPerDay: Double
+        var rhythm: DailyRhythm
+        var policy: PacePolicy = .standard
         var now: Date = .now
         var calendar: Calendar = .current
     }
 
     static func snapshot(_ input: Input) -> TargetSnapshot {
-        let calendar = input.calendar
         let target = input.startWeight - input.lossGoal
         let weight = input.currentWeight ?? input.startWeight
-        let remaining = max(weight - target, 0)
         let lost = input.startWeight - weight
         let progress = input.lossGoal > 0 ? min(max(lost / input.lossGoal, 0), 1) : 0
 
-        let days = daysRemaining(from: input.now, to: input.targetDate, calendar: calendar)
-        let effectiveDays = Double(max(days, 1))
-        let requiredPerWeek = remaining / (effectiveDays / 7)
-        let requiredDaily = remaining * caloriesPerPound / effectiveDays
-
-        // Basal burn from HealthKit is cumulative "so far today"; prorate the fallback to match.
-        let basal = input.basalBurn > 0
-            ? input.basalBurn
-            : input.restingCaloriesPerDay * fractionOfDayElapsed(input.now, calendar: calendar)
-        let burn = basal + input.activeBurn
-        let todayDeficit = burn - input.caloriesConsumed
-        let actual = weeklyLossRate(input.history, now: input.now)
+        let plan = WeightGoalEngine.plan(.init(
+            targetWeight: target,
+            targetDate: input.targetDate,
+            currentWeight: weight,
+            latestWeightDate: input.latestWeightDate,
+            policy: input.policy,
+            now: input.now,
+            calendar: input.calendar
+        ))
+        let energy = EnergyBalance.summarize(.init(
+            basalObserved: input.basalBurn,
+            activeObserved: input.activeBurn,
+            workouts: input.workouts,
+            restingCaloriesPerDay: input.restingCaloriesPerDay,
+            now: input.now,
+            calendar: input.calendar
+        ))
+        let intake = IntakeAssessor.assess(input.nutrition, rhythm: input.rhythm, now: input.now, calendar: input.calendar)
+        let actual = weeklyLossRate(
+            input.history, now: input.now, minimumReadings: minimumTrendReadings, minimumSpanDays: minimumTrendSpanDays
+        )
+        let sustainableMax = input.policy.sustainableMaximum(forWeight: weight)
 
         let status: TrackStatus
         if input.currentWeight == nil {
             status = .needsData
-        } else if remaining <= 0 {
+        } else if plan.feasibility == .achieved {
             status = .goalReached
-        } else if days <= 0 {
+        } else if plan.feasibility == .deadlinePassed {
             status = .deadlinePassed
-        } else if let actual, actual >= requiredPerWeek {
+        } else if let actual, actual >= plan.recommendedPoundsPerWeek * 0.8 {
             status = .onTrack
-        } else if todayDeficit >= requiredDaily {
-            status = .onTrack
-        } else if todayDeficit > 0 {
-            status = .pushHarder
+        } else if plan.feasibility == .exceedsSustainable {
+            status = .goalNeedsAdjustment
+        } else if intake.state == .missingLogs {
+            status = .loggingIncomplete
+        } else if let actual, actual <= 0.1 {
+            status = .needsAttention
         } else {
-            status = .deficitNeeded
+            // Losing, but slower than plan, or not enough weigh-ins yet to measure a trend.
+            status = .buildingMomentum
         }
 
         return TargetSnapshot(
             targetWeight: target,
             currentWeight: input.currentWeight,
             poundsLost: lost,
-            poundsRemaining: remaining,
+            poundsRemaining: plan.poundsRemaining,
             progress: progress,
-            daysRemaining: days,
-            requiredPoundsPerWeek: requiredPerWeek,
-            requiredDailyDeficit: requiredDaily,
-            todayBurn: burn,
-            todayDeficit: todayDeficit,
+            daysRemaining: plan.daysRemaining,
+            requiredPoundsPerWeek: plan.requiredPoundsPerWeek,
+            requiredDailyDeficit: plan.requiredDailyDeficitEstimate,
+            caloriesConsumed: input.nutrition.calories,
+            todayBurn: energy.total,
+            todayDeficit: energy.total - input.nutrition.calories,
             actualPoundsPerWeek: actual,
             status: status,
-            exceedsSafePace: requiredPerWeek > maxSafePoundsPerWeek
+            exceedsSafePace: plan.feasibility == .exceedsSustainable,
+            paceAboveSustainable: (actual ?? 0) > sustainableMax + 0.25,
+            plan: plan,
+            energy: energy,
+            intake: intake
         )
     }
 
     static func daysRemaining(from now: Date, to target: Date, calendar: Calendar = .current) -> Int {
-        calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: target)).day ?? 0
+        WeightGoalEngine.daysRemaining(from: now, to: target, calendar: calendar)
     }
 
     static func fractionOfDayElapsed(_ now: Date, calendar: Calendar = .current) -> Double {
-        min(now.timeIntervalSince(calendar.startOfDay(for: now)) / 86_400, 1)
+        EnergyBalance.fractionOfDayElapsed(now, calendar: calendar)
     }
 
     /// Least-squares slope of weight over the trailing window, as pounds lost per week (positive = losing).
-    static func weeklyLossRate(_ history: [WeightPoint], now: Date, windowDays: Int = 14) -> Double? {
+    static func weeklyLossRate(
+        _ history: [WeightPoint],
+        now: Date,
+        windowDays: Int = 14,
+        minimumReadings: Int = 2,
+        minimumSpanDays: Double = 3
+    ) -> Double? {
         let cutoff = now.addingTimeInterval(-Double(windowDays) * 86_400)
         let points = history.filter { $0.date >= cutoff && $0.date <= now }
-        guard points.count >= 2,
+        guard points.count >= minimumReadings,
               let first = points.map(\.date).min(),
               let last = points.map(\.date).max(),
-              last.timeIntervalSince(first) >= 3 * 86_400
+              last.timeIntervalSince(first) >= minimumSpanDays * 86_400
         else { return nil }
 
         let xs = points.map { $0.date.timeIntervalSince(first) / 86_400 }

@@ -5,8 +5,9 @@ extension TrackStatus {
     var color: Color {
         switch self {
         case .onTrack, .goalReached: Theme.gold
-        case .pushHarder: .orange
-        case .deficitNeeded, .deadlinePassed: Theme.red
+        case .buildingMomentum: Theme.goldLight
+        case .loggingIncomplete, .needsAttention, .goalNeedsAdjustment: .orange
+        case .deadlinePassed: Theme.red
         case .needsData: .gray
         }
     }
@@ -15,8 +16,10 @@ extension TrackStatus {
         switch self {
         case .onTrack: "checkmark.shield.fill"
         case .goalReached: "crown.fill"
-        case .pushHarder: "bolt.heart.fill"
-        case .deficitNeeded: "exclamationmark.triangle.fill"
+        case .buildingMomentum: "arrow.up.right.circle.fill"
+        case .needsAttention: "exclamationmark.triangle.fill"
+        case .loggingIncomplete: "square.and.pencil"
+        case .goalNeedsAdjustment: "calendar.badge.clock"
         case .deadlinePassed: "calendar.badge.exclamationmark"
         case .needsData: "antenna.radiowaves.left.and.right"
         }
@@ -25,9 +28,13 @@ extension TrackStatus {
 
 private let oneDecimal = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(1))
 private let wholeNumber = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(0))
+private let shortDate = Date.FormatStyle.dateTime.month(.abbreviated).day()
+private let longDate = Date.FormatStyle.dateTime.month(.abbreviated).day().year()
 
 struct StatusCard: View {
     let snapshot: TargetSnapshot
+
+    private var plan: GoalPlan { snapshot.plan }
 
     var body: some View {
         GlassCard(accent: snapshot.status.color) {
@@ -36,7 +43,8 @@ struct StatusCard: View {
                     Image(systemName: snapshot.status.symbol)
                         .font(.system(size: 30, weight: .bold))
                         .foregroundStyle(snapshot.status.color)
-                        .symbolEffect(.pulse, isActive: snapshot.status != .onTrack)
+                        .symbolEffect(.pulse, isActive: snapshot.status != .onTrack && snapshot.status != .goalReached)
+                        .accessibilityHidden(true)
                     Text(snapshot.status.title)
                         .font(.system(.title2, design: .rounded, weight: .black))
                         .foregroundStyle(snapshot.status.color)
@@ -44,20 +52,67 @@ struct StatusCard: View {
                 Text(snapshot.status.message)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                if let actual = snapshot.actualPoundsPerWeek {
-                    Text("14-day pace: \(actual, format: oneDecimal) lb/week · need \(snapshot.requiredPoundsPerWeek, format: oneDecimal)")
-                        .font(.caption.weight(.semibold).monospacedDigit())
+                if snapshot.currentWeight != nil, plan.feasibility != .achieved {
+                    trendLine
                 }
-                if snapshot.exceedsSafePace {
-                    Label(
-                        "Required pace is \(snapshot.requiredPoundsPerWeek.formatted(oneDecimal)) lb/week, above the ~2 lb/week generally considered safe. Consider extending the date or checking with your doctor.",
+                if snapshot.paceAboveSustainable {
+                    note(
+                        "You're losing faster than about \(plan.sustainablePace.upperBound.formatted(oneDecimal)) lb/week. Early weeks often include water weight, but if this keeps up, make sure you're eating enough to fuel yourself.",
                         systemImage: "heart.text.square"
                     )
-                    .font(.caption)
-                    .foregroundStyle(Theme.red)
+                }
+                if snapshot.currentWeight != nil, plan.needsAdjustment {
+                    adjustment
+                }
+                if snapshot.currentWeight != nil, plan.weightIsStale {
+                    note("Your last weigh-in is over a week old. Step on the scale so the plan uses a current weight.", systemImage: "scalemass")
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var trendLine: some View {
+        let planText = "plan \(plan.recommendedPoundsPerWeek.formatted(oneDecimal)) lb/week"
+        if let actual = snapshot.actualPoundsPerWeek {
+            Text("14-day trend: \(actual, format: oneDecimal) lb/week · \(planText)")
+                .font(.caption.weight(.semibold).monospacedDigit())
+        } else {
+            Text("Trend: needs 3+ weigh-ins over 5+ days · \(planText)")
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var adjustment: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if plan.feasibility == .exceedsSustainable {
+                Text("Reaching \(plan.targetWeight.formatted(oneDecimal)) lb by \(plan.targetDate.formatted(shortDate)) would take \(plan.requiredPoundsPerWeek.formatted(oneDecimal)) lb/week (roughly \(plan.requiredDailyDeficitEstimate.formatted(wholeNumber)) kcal/day). That's above the ~\(plan.sustainablePace.upperBound.formatted(oneDecimal)) lb/week that's sustainable for you, so the plan doesn't chase it.")
+            }
+            if let atDeadline = plan.projectedWeightAtDeadline {
+                Text("At a sustainable pace: about \(atDeadline.lowerBound.formatted(wholeNumber))–\(atDeadline.upperBound.formatted(wholeNumber)) lb by \(plan.targetDate.formatted(shortDate)).")
+            }
+            if let dates = plan.projectedTargetDate {
+                Text("\(plan.targetWeight.formatted(oneDecimal)) lb projected \(dates.lowerBound.formatted(longDate)) – \(dates.upperBound.formatted(longDate)).")
+            }
+            if let suggested = plan.suggestedTargetDate {
+                Text("Consider moving the date to \(suggested.formatted(longDate)) in Goal Settings.")
+                    .foregroundStyle(Theme.goldLight)
+            }
+            Text("Projections are estimates, not promises.")
+                .foregroundStyle(.secondary)
+        }
+        .font(.caption)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func note(_ text: String, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(.orange)
     }
 }
 
@@ -156,37 +211,71 @@ struct CountdownCard: View {
 
 struct DeficitCard: View {
     let snapshot: TargetSnapshot
-    let consumed: Double
-    let active: Double
+
+    private var intake: IntakeAssessment { snapshot.intake }
+    private var energy: EnergySummary { snapshot.energy }
+    private var plan: GoalPlan { snapshot.plan }
+    /// Gold only for a finished, logged day that met the plan. A day in progress is never colored as a miss.
+    private var deficitColor: Color {
+        intake.canJudgeDeficit && snapshot.todayDeficit >= plan.recommendedDailyDeficitEstimate * 0.8 ? Theme.gold : .primary
+    }
 
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeader(title: "Today's Deficit", systemImage: "flame.fill")
+                CardHeader(title: intake.canJudgeDeficit ? "Today's Deficit" : "Today So Far", systemImage: "flame.fill")
                 HStack {
-                    column("CONSUMED", consumed, "Carb Manager")
+                    column("CONSUMED", snapshot.intake.state == .notTracking ? nil : snapshot.caloriesConsumed, intake.state.label)
                     Spacer()
-                    column("BURNED", snapshot.todayBurn, "\(active.formatted(wholeNumber)) active")
+                    column("BURNED", snapshot.todayBurn, energy.includesEstimates ? "includes estimate" : "\(energy.active.formatted(wholeNumber)) active")
                     Spacer()
-                    column("DEFICIT", snapshot.todayDeficit, "kcal", highlight: snapshot.todayDeficit >= snapshot.requiredDailyDeficit ? Theme.gold : Theme.red)
+                    column(
+                        "DEFICIT",
+                        snapshot.intake.state == .notTracking ? nil : snapshot.todayDeficit,
+                        intake.canJudgeDeficit ? "kcal" : "so far",
+                        highlight: deficitColor
+                    )
                 }
-                ProgressView(value: min(max(snapshot.todayDeficit / max(snapshot.requiredDailyDeficit, 1), 0), 1))
-                    .tint(snapshot.todayDeficit >= snapshot.requiredDailyDeficit ? Theme.gold : Theme.red)
-                Text("Required daily deficit: \(snapshot.requiredDailyDeficit, format: wholeNumber) kcal")
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                if intake.canJudgeDeficit, plan.recommendedDailyDeficitEstimate > 0 {
+                    ProgressView(value: min(max(snapshot.todayDeficit / plan.recommendedDailyDeficitEstimate, 0), 1))
+                        .tint(deficitColor)
+                }
+                Text(intake.summary)
+                    .font(.caption)
+                    .foregroundStyle(intake.state == .missingLogs || intake.lowIntakeConcern ? .orange : .secondary)
+                if intake.proteinDataMissing {
+                    Text("No protein data reached Apple Health. Check macro syncing in your food app.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if plan.recommendedDailyDeficitEstimate > 0 {
+                    Text("Plan: about \(plan.recommendedDailyDeficitEstimate, format: wholeNumber) kcal/day deficit (rough estimate)")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                if !energy.issues.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(energy.issues.indices, id: \.self) { index in
+                            let issue = energy.issues[index]
+                            Label(issue.message, systemImage: issue.reducesConfidence ? "exclamationmark.circle" : "info.circle")
+                                .foregroundStyle(issue.reducesConfidence ? Color.orange : Color.secondary)
+                        }
+                    }
+                    .font(.caption2)
+                }
             }
         }
     }
 
-    private func column(_ label: String, _ value: Double, _ caption: String, highlight: Color = .primary) -> some View {
+    private func column(_ label: String, _ value: Double?, _ caption: String, highlight: Color = .primary) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(.caption2.weight(.heavy)).tracking(1.2).foregroundStyle(.secondary)
-            Text(value, format: wholeNumber)
+            Text(value.map { $0.formatted(wholeNumber) } ?? "—")
                 .font(.system(.title2, design: .rounded, weight: .black).monospacedDigit())
                 .foregroundStyle(highlight)
             Text(caption).font(.caption2).foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 

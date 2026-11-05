@@ -51,3 +51,54 @@ struct CoachServiceTests {
         #expect(CoachService.Credential("tiger-42") == .accessCode("tiger-42"))
     }
 }
+
+struct CoachSafetyTests {
+    @Test(arguments: CoachTone.allCases)
+    func everyToneCarriesTheSameSafetyRules(tone: CoachTone) throws {
+        let photo = CoachPhoto(jpeg: Data([0xFF, 0xD8]), date: .now, weightLbs: 200)
+        let verdict = try #require(CoachService.requestBody(then: photo, now: photo, context: "CLIENT DATA", tone: tone)["system"] as? String)
+        let notes = try #require(CoachService.notesRequestBody(
+            for: [NoteRequest(dayOffset: 1, slot: .wake, minutes: 330)], context: "CLIENT DATA", tone: tone,
+            skipsBreakfast: false, recentlyUsed: []
+        )["system"] as? String)
+        #expect(verdict.contains(CoachSafety.rules))
+        #expect(notes.contains(CoachSafety.rules))
+    }
+
+    @Test func drillSergeantChallengesHabitsNotBodies() {
+        let instructions = CoachTone.drillSergeant.instructions
+        #expect(!instructions.localizedCaseInsensitiveContains("gut"))
+        #expect(!instructions.localizedCaseInsensitiveContains("roast"))
+        #expect(instructions.contains("never at their body"))
+    }
+
+    private func snapshot(current: Double, deadline: Date, consumed: Double, now: Date) -> TargetSnapshot {
+        TargetEngine.snapshot(.init(
+            startWeight: 334.7, lossGoal: 34, targetDate: deadline, currentWeight: current, latestWeightDate: now,
+            history: [], nutrition: Fixture.log(calories: consumed, protein: 7, entries: [now.addingTimeInterval(-1800)]),
+            activeBurn: 80, basalBurn: 700, restingCaloriesPerDay: 2200, rhythm: Fixture.rhythm,
+            now: now, calendar: Fixture.calendar
+        ))
+    }
+
+    @Test func coachSeesTheSustainablePlanNotTheDeadlineDeficit() {
+        let now = Fixture.date(2026, 11, 5, hour: 9)
+        let snapshot = snapshot(current: 330, deadline: Fixture.date(2026, 12, 14), consumed: 190, now: now)
+        let lines = CoachViewModel.planLines(snapshot.plan).joined(separator: "\n")
+        #expect(lines.contains("context only, not an instruction"))
+        #expect(lines.contains("Don't push a bigger deficit"))
+        #expect(lines.contains("Sustainable plan to coach toward: 2.0 lb/week"))
+        #expect(!lines.contains("2,629"))
+        #expect(!lines.contains("2629"))
+    }
+
+    @Test func coachIsToldAMorningLogIsPartial() {
+        let now = Fixture.date(2026, 11, 5, hour: 9)
+        let snapshot = snapshot(current: 330, deadline: Fixture.date(2027, 6, 1), consumed: 190, now: now)
+        let lines = CoachViewModel.todayLines(snapshot, nutrition: Fixture.log(calories: 190, protein: 7, entries: [now]), now: now)
+            .joined(separator: "\n")
+        #expect(lines.contains("This is a partial day"))
+        #expect(lines.contains("IN PROGRESS"))
+        #expect(!lines.contains("Today's estimated deficit"))
+    }
+}

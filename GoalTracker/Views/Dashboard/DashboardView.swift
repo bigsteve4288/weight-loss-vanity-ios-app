@@ -17,7 +17,7 @@ struct DashboardView: View {
                         EmergencyResetButton { viewModel.isShowingEmergencyReset = true }
                         TargetCard(snapshot: snapshot, startWeight: profile.startWeightLbs)
                         CountdownCard(targetDate: profile.targetDate)
-                        DeficitCard(snapshot: snapshot, consumed: health.caloriesConsumed, active: health.activeEnergyBurned)
+                        DeficitCard(snapshot: snapshot)
                         MacrosCard(carbs: health.carbsGrams, protein: health.proteinGrams, fat: health.fatGrams)
                         WorkoutsCard(workouts: health.recentWorkouts)
                         if !health.weightHistory.isEmpty {

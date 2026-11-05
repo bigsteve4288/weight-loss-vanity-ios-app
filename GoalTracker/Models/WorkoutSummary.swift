@@ -7,7 +7,9 @@ struct WorkoutSummary: Identifiable, Hashable, Sendable {
     let activityName: String
     let symbolName: String
     let start: Date
+    let end: Date
     let duration: TimeInterval
+    /// Active calories for the workout: per-sample statistics when present, otherwise the app's stored total.
     let calories: Double?
     let distanceMiles: Double?
     let source: String
@@ -35,6 +37,7 @@ extension WorkoutSummary {
             activityName: workout.workoutActivityType.displayName,
             symbolName: workout.workoutActivityType.symbolName,
             start: workout.startDate,
+            end: workout.endDate,
             duration: workout.duration,
             calories: calories,
             distanceMiles: distance,

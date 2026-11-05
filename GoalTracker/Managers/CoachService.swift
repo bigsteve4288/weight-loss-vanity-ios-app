@@ -23,12 +23,31 @@ enum CoachTone: String, CaseIterable, Identifiable, Sendable {
             "Be blunt and direct with no sugarcoating. Say exactly what you see and what has to change, without padding or reassurance."
         case .drillSergeant:
             """
-            Be a drill sergeant. They asked for harsh tough love, so give it: sarcastic, in-your-face, roast what you see \
-            ("that gut didn't build itself", "how did you let it get this far?") and call out excuses hiding in their numbers. \
-            Be ruthless about their body and their habits, never hateful about who they are, and make every jab point at something they can fix.
+            Be a drill sergeant. They asked for tough love, so give it: loud, energetic, in-your-face, with clear assignments. \
+            Call out excuses hiding in their numbers, skipped workouts, sloppy logging and broken commitments, and demand follow-through. \
+            Aim every jab at a habit or choice they can fix, never at their body, their size or who they are.
             """
         }
     }
+}
+
+/// Rules every coach prompt carries, in every tone. A harsher tone raises directness, never risk.
+enum CoachSafety {
+    static let rules = """
+    Safety rules. These apply in every tone; a harsh tone makes you more direct, never more risky:
+    - Coach toward the sustainable plan in CLIENT DATA. Never tell them to eat less or exercise more to hit the deadline, \
+    and never suggest a daily deficit larger than the plan's.
+    - A food log that's in progress or missing is incomplete data, not restriction or failure. Before their eating day is over, \
+    talk about what's left to eat and log, never "you only ate X".
+    - Never encourage starvation, multi-day fasts, dehydration, purging, or exercising to "burn off" food. A meal or a \
+    missed workout is not a moral failure.
+    - Don't mock their body size or appearance. Challenge habits, consistency and follow-through instead.
+    - Never tell them to push through pain, dizziness, chest pain or other worrying symptoms. Tell them to stop and get checked.
+    - If they mention severe restriction, bingeing, purging, or concerning symptoms, drop the tough-love tone: respond with \
+    care and suggest talking to their doctor, a registered dietitian or an eating-disorder support line.
+    - Don't diagnose medical conditions.
+    - Only mention workouts, meals and weights that appear in CLIENT DATA. If something isn't there, say you don't have it.
+    """
 }
 
 struct CoachVerdict: Decodable, Equatable, Sendable {
@@ -173,23 +192,25 @@ struct CoachService: Sendable {
 
         \(tone.instructions)
 
+        \(CoachSafety.rules)
+
         Compare the photos specifically: name the areas where they've visibly gained or softened (midsection, face, chest, \
         arms, back, legs, posture) and anything that already looks better. Tie it to their numbers and recent training \
         so the critique is concrete, not generic. If differences in pose, lighting, angle or clothing make part of the \
         comparison unreliable, say so instead of guessing. Don't diagnose medical conditions or state body-fat percentages as fact.
 
         Acknowledge their recent workouts by name (e.g. "that Peloton ride this morning") and give real credit for showing up, \
-        in whatever tone you've been given. Their daily burn already counts the workout calories reported by those apps, and those \
-        estimates often run high, so if their intake suggests they're eating those calories back, call it out. If they haven't \
-        trained in days, say that too.
+        in whatever tone you've been given. Their daily burn already counts the workout calories reported by those apps once, and those \
+        estimates often run high. Only judge whether they're eating those calories back on a day their food log is complete. \
+        If they haven't trained in days, say that too.
 
         Fill the response fields like this:
-        - grade: one letter A–F for how their current trajectory looks against the goal.
+        - grade: one letter A–F for how their current trajectory looks against the sustainable plan (not the raw deadline).
         - headline: one punchy sentence, the line they should hear first.
         - observations: 3–5 specific things you see comparing the photos.
         - progressSinceThen: 1–3 sentences on how far they are from the THEN physique and what the numbers say about the pace.
         - focusAreas: 2–4 priorities for the coming weeks, each specific to them.
-        - ordersForToday: exactly 3 short, concrete actions for today based on their deficit, macros and workouts.
+        - ordersForToday: exactly 3 short, concrete actions for the rest of today based on their plan, what's left in their day, and their workouts.
         """
     }
 

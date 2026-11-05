@@ -84,6 +84,8 @@ extension CoachService {
 
         \(tone.instructions)
 
+        \(CoachSafety.rules)
+
         Rotate across these categories, and give each day a mix: at least one scripture and one story.
         - scripture: a verse on eating, self-control, fasting, the body or perseverance, tied to the moment.
         - fasting: why fasting is good, biblically (Matthew 6, Isaiah 58, Daniel) and practically.

@@ -10,13 +10,20 @@ final class HealthKitManager {
     private(set) var latestWeightLbs: Double?
     private(set) var latestWeightDate: Date?
     private(set) var weightHistory: [WeightPoint] = []
-    private(set) var caloriesConsumed: Double = 0
-    private(set) var carbsGrams: Double = 0
-    private(set) var proteinGrams: Double = 0
-    private(set) var fatGrams: Double = 0
+    /// Today's food log, including entry times so the engine can tell a partial day from a finished one.
+    private(set) var nutrition: NutritionLog = .empty
+    /// Active energy from Apple Health samples today, as HealthKit de-duplicates them across sources.
+    /// Workout calories that exist only on the workout are merged in later by `EnergyBalance`.
     private(set) var activeEnergyBurned: Double = 0
     private(set) var basalEnergyBurned: Double = 0
     private(set) var recentWorkouts: [WorkoutSummary] = []
+    /// Today's workouts with the active energy Apple Health holds for each one's window.
+    private(set) var workoutEnergyToday: [WorkoutEnergy] = []
+
+    var caloriesConsumed: Double { nutrition.calories }
+    var carbsGrams: Double { nutrition.carbsGrams }
+    var proteinGrams: Double { nutrition.proteinGrams }
+    var fatGrams: Double { nutrition.fatGrams }
     private(set) var lastUpdated: Date?
     private(set) var hasRequestedAuthorization = false
     var errorMessage: String?
@@ -60,26 +67,37 @@ final class HealthKitManager {
 
     func refresh() async {
         guard isAvailable, hasRequestedAuthorization else { return }
+        // One clock and calendar for the whole refresh so every number describes the same "today".
+        let now = Date.now
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: now)
+
         weightHistory = await fetchWeightHistory(days: 90)
         if let latest = await fetchLatestWeight() {
             latestWeightLbs = latest.pounds
             latestWeightDate = latest.date
         }
-        caloriesConsumed = await todaySum(Self.energyConsumed, unit: .kilocalorie())
-        carbsGrams = await todaySum(Self.carbohydrates, unit: .gram())
-        proteinGrams = await todaySum(Self.protein, unit: .gram())
-        fatGrams = await todaySum(Self.fat, unit: .gram())
-        let sampledActiveEnergy = await todaySum(Self.activeEnergy, unit: .kilocalorie())
-        basalEnergyBurned = await todaySum(Self.basalEnergy, unit: .kilocalorie())
+
+        let calories = await sum(Self.energyConsumed, unit: .kilocalorie(), from: dayStart, to: now)
+        let protein = await sum(Self.protein, unit: .gram(), from: dayStart, to: now)
+        let carbs = await sum(Self.carbohydrates, unit: .gram(), from: dayStart, to: now)
+        let fat = await sum(Self.fat, unit: .gram(), from: dayStart, to: now)
+        let weekBefore = calendar.date(byAdding: .day, value: -7, to: dayStart) ?? dayStart
+        nutrition = NutritionLog(
+            calories: calories ?? 0,
+            proteinGrams: protein ?? 0,
+            carbsGrams: carbs ?? 0,
+            fatGrams: fat ?? 0,
+            entryTimes: await sampleStartDates(Self.energyConsumed, from: dayStart, to: now),
+            hasProteinData: protein != nil,
+            loggedInPastWeek: await hasSamples(Self.energyConsumed, from: weekBefore, to: dayStart)
+        )
+
+        activeEnergyBurned = await sum(Self.activeEnergy, unit: .kilocalorie(), from: dayStart, to: now) ?? 0
+        basalEnergyBurned = await sum(Self.basalEnergy, unit: .kilocalorie(), from: dayStart, to: now) ?? 0
         recentWorkouts = await fetchRecentWorkouts(days: 14)
-        // Workouts saved without active-energy samples don't show up in the sum above. Taking the larger of the
-        // two credits those workouts without double-counting ones whose samples are already included.
-        let workoutEnergyToday = recentWorkouts
-            .filter { Calendar.current.isDateInToday($0.start) }
-            .compactMap(\.calories)
-            .reduce(0, +)
-        activeEnergyBurned = max(sampledActiveEnergy, workoutEnergyToday)
-        lastUpdated = .now
+        workoutEnergyToday = await workoutEnergy(for: recentWorkouts, now: now, calendar: calendar)
+        lastUpdated = now
     }
 
     func saveWeight(pounds: Double, date: Date) async throws {
@@ -93,7 +111,7 @@ final class HealthKitManager {
 
     private func startObserving() {
         guard observerQueries.isEmpty else { return }
-        let observed: [HKSampleType] = [Self.bodyMass, Self.energyConsumed, Self.carbohydrates, Self.protein, Self.fat, Self.activeEnergy, Self.workouts]
+        let observed: [HKSampleType] = [Self.bodyMass, Self.energyConsumed, Self.carbohydrates, Self.protein, Self.fat, Self.activeEnergy, Self.basalEnergy, Self.workouts]
         for type in observed {
             let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completionHandler, _ in
                 completionHandler()
@@ -116,14 +134,53 @@ final class HealthKitManager {
 
     // MARK: - Queries
 
-    private func todaySum(_ type: HKQuantityType, unit: HKUnit) async -> Double {
-        let predicate = HKQuery.predicateForSamples(withStart: Calendar.current.startOfDay(for: .now), end: .now)
+    /// Cumulative sum over a window, or `nil` when Apple Health has no samples there. HealthKit's statistics
+    /// query merges overlapping samples from different sources by the user's source priority, so an Apple
+    /// Watch and a Peloton recording the same minutes are counted once.
+    private func sum(_ type: HKQuantityType, unit: HKUnit, from start: Date, to end: Date) async -> Double? {
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
         let descriptor = HKStatisticsQueryDescriptor(
             predicate: .quantitySample(type: type, predicate: predicate),
             options: .cumulativeSum
         )
         let statistics = try? await descriptor.result(for: store)
-        return statistics?.sumQuantity()?.doubleValue(for: unit) ?? 0
+        return statistics?.sumQuantity()?.doubleValue(for: unit)
+    }
+
+    private func sampleStartDates(_ type: HKQuantityType, from start: Date, to end: Date) async -> [Date] {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: type, predicate: HKQuery.predicateForSamples(withStart: start, end: end))],
+            sortDescriptors: [SortDescriptor(\.startDate)]
+        )
+        return ((try? await descriptor.result(for: store)) ?? []).map(\.startDate)
+    }
+
+    private func hasSamples(_ type: HKQuantityType, from start: Date, to end: Date) async -> Bool {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: type, predicate: HKQuery.predicateForSamples(withStart: start, end: end))],
+            sortDescriptors: [],
+            limit: 1
+        )
+        return !((try? await descriptor.result(for: store)) ?? []).isEmpty
+    }
+
+    /// For each workout that overlaps today, the active energy Apple Health already holds for today's part
+    /// of it, so `EnergyBalance` only adds app-reported calories that aren't in the daily sum yet.
+    private func workoutEnergy(for workouts: [WorkoutSummary], now: Date, calendar: Calendar) async -> [WorkoutEnergy] {
+        var result: [WorkoutEnergy] = []
+        for workout in workouts {
+            guard let window = EnergyBalance.todayPortion(start: workout.start, end: workout.end, now: now, calendar: calendar) else { continue }
+            let sampled = await sum(Self.activeEnergy, unit: .kilocalorie(), from: window.start, to: window.end) ?? 0
+            result.append(WorkoutEnergy(
+                id: workout.id,
+                start: workout.start,
+                end: workout.end,
+                source: workout.source,
+                reportedCalories: workout.calories,
+                sampledCaloriesInWindow: sampled
+            ))
+        }
+        return result
     }
 
     private func fetchWeightHistory(days: Int) async -> [WeightPoint] {
