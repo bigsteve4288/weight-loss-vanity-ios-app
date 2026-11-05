@@ -47,12 +47,18 @@ struct DashboardView: View {
                     Button("Goal Settings", systemImage: "gearshape.fill") { viewModel.isShowingSettings = true }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button("Ask the Coach", systemImage: "bubble.left.and.text.bubble.right.fill") { viewModel.isShowingCoachChat = true }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Log Weight", systemImage: "scalemass.fill") { viewModel.isShowingLogWeight = true }
                 }
             }
             .refreshable { await health.refresh() }
             .sheet(isPresented: $viewModel.isShowingLogWeight) { LogWeightView() }
             .sheet(isPresented: $viewModel.isShowingSettings) { GoalSetupView(profile: profiles.first) }
+            .sheet(isPresented: $viewModel.isShowingCoachChat) {
+                NavigationStack { CoachChatView() }
+            }
             .fullScreenCover(isPresented: $viewModel.isShowingEmergencyReset) { EmergencyResetView() }
             .onChange(of: health.latestWeightLbs, initial: true) { _, weight in
                 viewModel.markAchievedMilestones(milestones, currentWeight: weight)
@@ -64,6 +70,6 @@ struct DashboardView: View {
 #Preview {
     DashboardView()
         .environment(HealthKitManager())
-        .modelContainer(for: [GoalProfile.self, WeightMilestone.self], inMemory: true)
+        .modelContainer(for: [GoalProfile.self, WeightMilestone.self, CoachMessage.self], inMemory: true)
         .preferredColorScheme(.dark)
 }

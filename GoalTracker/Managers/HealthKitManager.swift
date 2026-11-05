@@ -184,6 +184,45 @@ final class HealthKitManager {
         return result
     }
 
+    // MARK: - On-demand history (for the AI Coach; not part of the regular refresh)
+
+    /// Daily food, protein and active-energy totals for the last `days` days, oldest first.
+    /// A day with no samples for a type has `nil` for it (not logged), not zero.
+    func dailyTotals(days: Int, now: Date = .now, calendar: Calendar = .current) async -> [DailyHealthTotals] {
+        let today = calendar.startOfDay(for: now)
+        guard let start = calendar.date(byAdding: .day, value: -(days - 1), to: today) else { return [] }
+        async let calories = dailySums(Self.energyConsumed, unit: .kilocalorie(), from: start, to: now, calendar: calendar)
+        async let protein = dailySums(Self.protein, unit: .gram(), from: start, to: now, calendar: calendar)
+        async let active = dailySums(Self.activeEnergy, unit: .kilocalorie(), from: start, to: now, calendar: calendar)
+        let (food, grams, burn) = await (calories, protein, active)
+        return (0..<days).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
+            return DailyHealthTotals(day: day, caloriesConsumed: food[day], proteinGrams: grams[day], activeEnergy: burn[day])
+        }
+    }
+
+    /// Workouts from the last `days` days, newest first, fetched on demand.
+    func workouts(days: Int) async -> [WorkoutSummary] {
+        await fetchRecentWorkouts(days: days)
+    }
+
+    private func dailySums(_ type: HKQuantityType, unit: HKUnit, from start: Date, to end: Date, calendar: Calendar) async -> [Date: Double] {
+        let descriptor = HKStatisticsCollectionQueryDescriptor(
+            predicate: .quantitySample(type: type, predicate: HKQuery.predicateForSamples(withStart: start, end: end)),
+            options: .cumulativeSum,
+            anchorDate: start,
+            intervalComponents: DateComponents(day: 1)
+        )
+        guard let collection = try? await descriptor.result(for: store) else { return [:] }
+        var result: [Date: Double] = [:]
+        for statistics in collection.statistics() {
+            if let value = statistics.sumQuantity()?.doubleValue(for: unit) {
+                result[calendar.startOfDay(for: statistics.startDate)] = value
+            }
+        }
+        return result
+    }
+
     private func fetchWeightHistory(days: Int) async -> [WeightPoint] {
         let start = Calendar.current.date(byAdding: .day, value: -days, to: .now)
         let descriptor = HKSampleQueryDescriptor(

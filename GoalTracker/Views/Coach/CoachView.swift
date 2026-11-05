@@ -30,6 +30,26 @@ struct CoachView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    NavigationLink {
+                        CoachChatView(showsDoneButton: false)
+                    } label: {
+                        GlassCard {
+                            HStack(spacing: 12) {
+                                Image(systemName: "bubble.left.and.text.bubble.right.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(Theme.gold)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Ask the Coach").font(.headline.weight(.bold))
+                                    Text("Questions about your weight, food and workouts, answered from your data.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
                     if viewModel.hasAPIKey {
                         requestCard
                     } else {

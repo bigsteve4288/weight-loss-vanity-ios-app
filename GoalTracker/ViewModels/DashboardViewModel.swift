@@ -7,6 +7,7 @@ final class DashboardViewModel {
     var isShowingEmergencyReset = false
     var isShowingLogWeight = false
     var isShowingSettings = false
+    var isShowingCoachChat = false
 
     func snapshot(profile: GoalProfile, health: HealthKitManager, now: Date = .now) -> TargetSnapshot {
         TargetEngine.snapshot(profile: profile, health: health, now: now)

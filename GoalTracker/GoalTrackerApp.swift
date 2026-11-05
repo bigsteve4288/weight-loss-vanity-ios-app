@@ -26,7 +26,8 @@ struct GoalTrackerApp: App {
                 SpiritualQuote.self,
                 CoachCritique.self,
                 CoachNote.self,
-                GoalChange.self
+                GoalChange.self,
+                CoachMessage.self
             )
         } catch {
             fatalError("Couldn't open the data store: \(error)")

@@ -80,7 +80,7 @@ enum CoachError: LocalizedError, Equatable {
             default: "Coach request failed (\(status)): \(message)"
             }
         case let .refused(explanation):
-            "The coach declined to review these photos.\(explanation.map { " \($0)" } ?? "")"
+            "The coach declined this request.\(explanation.map { " \($0)" } ?? "")"
         case .truncated:
             "The coach's response was cut off. Try again."
         case .malformed:
@@ -170,6 +170,13 @@ struct CoachService: Sendable {
 
     /// Decodes the structured-output JSON from a Messages API response.
     static func decodeOutput<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        let text = try decodeText(from: data)
+        guard let output = try? JSONDecoder().decode(T.self, from: Data(text.utf8)) else { throw CoachError.malformed }
+        return output
+    }
+
+    /// The answer text from a Messages API response.
+    static func decodeText(from data: Data) throws -> String {
         guard let message = try? JSONDecoder().decode(MessageResponse.self, from: data) else { throw CoachError.malformed }
         switch message.stopReason {
         case "refusal": throw CoachError.refused(message.stopDetails?.explanation)
@@ -179,8 +186,8 @@ struct CoachService: Sendable {
         // When a fallback model takes over, only the text after the last fallback boundary is the answer.
         let start = message.content.lastIndex(where: { $0.type == "fallback" }).map { $0 + 1 } ?? 0
         let text = message.content[start...].filter { $0.type == "text" }.compactMap(\.text).joined()
-        guard let output = try? JSONDecoder().decode(T.self, from: Data(text.utf8)) else { throw CoachError.malformed }
-        return output
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CoachError.malformed }
+        return text
     }
 
     // MARK: - Prompt

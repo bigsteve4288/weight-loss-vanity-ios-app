@@ -83,7 +83,7 @@ final class CoachViewModel {
             if includeHealthHistory, profile.shareHealthHistoryWithCoach {
                 lines.append(contentsOf: healthHistoryLines(profile.healthHistory))
             }
-            let actual = snapshot.actualPoundsPerWeek.map { "\($0.formatted(lbs)) lb/week" } ?? "not enough weigh-ins yet (needs 3+ over 5+ days)"
+            let actual = snapshot.actualPoundsPerWeek.map { "\($0.formatted(lbs)) lb/week" } ?? "not enough weigh-ins yet (needs 4+ weigh-in days over a week)"
             lines.append("- Measured 14-day trend: \(actual).\(snapshot.paceAboveSustainable ? " That's faster than sustainable; make sure they're eating enough rather than praising the speed." : "")")
             lines.append("- Dashboard status: \(snapshot.status.title).")
             lines.append(contentsOf: todayLines(snapshot, nutrition: health.nutrition, now: now))
