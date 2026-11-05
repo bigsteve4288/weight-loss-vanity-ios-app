@@ -26,6 +26,31 @@ struct TodaySummaryCard: View {
                     stat(snapshot.daysRemaining >= 0 ? "\(snapshot.daysRemaining)" : "—", unit: snapshot.daysRemaining == 1 ? "day" : "days", caption: "left")
                 }
 
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: snapshot.progress)
+                        .tint(Theme.gold)
+                        .accessibilityLabel("Progress toward goal")
+                    HStack {
+                        Text("\(snapshot.progress.formatted(.percent.precision(.fractionLength(0)))) complete")
+                        Spacer()
+                        if let projection = snapshot.projectionSummary {
+                            Text(projection)
+                        }
+                    }
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                }
+
+                let gaps = snapshot.dataGaps
+                if !gaps.isEmpty {
+                    Label(gaps.joined(separator: " · "), systemImage: "info.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel("Data limits: \(gaps.joined(separator: ", "))")
+                }
+
                 Divider().overlay(Theme.gold.opacity(0.3))
 
                 nextAction(action)

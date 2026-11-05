@@ -139,3 +139,32 @@ struct NextActionAdvisorTests {
         }
     }
 }
+
+struct SummaryDataTests {
+    private let morningWeighIn = Fixture.date(2026, 11, 4, hour: 7)
+
+    private func snapshot(history: [WeightPoint], basal: Double = 1500, loggedFood: Bool = true) -> TargetSnapshot {
+        TargetEngine.snapshot(TargetEngine.Input(
+            startWeight: 234, lossGoal: 34, targetDate: Fixture.date(2027, 3, 4),
+            currentWeight: history.last?.pounds, latestWeightDate: history.last?.date, history: history,
+            nutrition: loggedFood ? Fixture.log(calories: 500, entries: [Fixture.date(2026, 11, 4, hour: 11)]) : .empty,
+            activeBurn: 200, basalBurn: basal, restingCaloriesPerDay: 1800, rhythm: Fixture.rhythm,
+            now: Fixture.date(2026, 11, 4), calendar: Fixture.calendar
+        ))
+    }
+
+    @Test func solidDataHasNoGapsAndAProjection() {
+        let solid = snapshot(history: Fixture.history(endingAt: morningWeighIn, days: 28, from: 229.4, perDay: 0.2), basal: 1000)
+        #expect(solid.dataGaps.isEmpty)
+        #expect(solid.projectionSummary?.hasPrefix("Goal projected") == true)
+    }
+
+    @Test func gapsAreNamed() {
+        let thin = snapshot(history: Fixture.history(endingAt: morningWeighIn, days: 2, from: 224.2, perDay: 0.2), basal: 0, loggedFood: false)
+        #expect(thin.dataGaps == ["Too few weigh-ins for a pace", "Food not tracked in Apple Health", "Burn partly estimated"])
+        #expect(thin.projectionSummary == "Goal date not projected yet")
+
+        let stale = snapshot(history: Fixture.history(endingAt: Fixture.calendar.date(byAdding: .day, value: -10, to: morningWeighIn)!, days: 14, from: 228, perDay: 0.2))
+        #expect(stale.dataGaps.first == "Weigh-in over a week old")
+    }
+}

@@ -81,3 +81,28 @@ enum NextActionAdvisor {
 
     private static let oneDecimal = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(1))
 }
+
+extension TargetSnapshot {
+    /// Short notes on what's missing or estimated in today's picture. Empty when the data is solid.
+    var dataGaps: [String] {
+        var gaps: [String] = []
+        if currentWeight != nil, trend.isStale { gaps.append("Weigh-in over a week old") }
+        if currentWeight != nil, !trend.isStale, trend.primaryWindow == nil { gaps.append("Too few weigh-ins for a pace") }
+        if intake.state == .notTracking { gaps.append("Food not tracked in Apple Health") }
+        if !energy.isReliable || energy.includesEstimates { gaps.append("Burn partly estimated") }
+        return gaps
+    }
+
+    /// One line for the projected goal date, at month precision, or why there isn't one.
+    var projectionSummary: String? {
+        switch forecast.state {
+        case .goalReached:
+            return nil
+        case .projected:
+            guard let date = forecast.projectedGoalDate else { return nil }
+            return "Goal projected \(date.formatted(.dateTime.month(.abbreviated).year())) · \(forecast.confidence.rawValue) confidence"
+        case .notProjected:
+            return "Goal date not projected yet"
+        }
+    }
+}
