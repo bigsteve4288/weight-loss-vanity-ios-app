@@ -13,6 +13,11 @@ struct DashboardView: View {
                 if let profile = profiles.first {
                     let snapshot = viewModel.snapshot(profile: profile, health: health)
                     VStack(spacing: 16) {
+                        TodaySummaryCard(
+                            snapshot: snapshot,
+                            onLogWeight: { viewModel.isShowingLogWeight = true },
+                            onOpenSettings: { viewModel.isShowingSettings = true }
+                        )
                         StatusCard(snapshot: snapshot)
                         EmergencyResetButton { viewModel.isShowingEmergencyReset = true }
                         TargetCard(snapshot: snapshot, startWeight: profile.startWeightLbs)

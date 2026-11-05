@@ -95,7 +95,7 @@ Living checklist for the product improvement plan. Update it as phases land.
 ### P1 — Phase 2/3
 - [x] Chart the `WeightTrendService` smoothed line and the forecast (services exist since Phase 1.5)
 - [x] Chart: actual + smoothed + goal trajectory + forecast, 7/30/90-day ranges; no smoothing across gaps (`WeightChartModel`, `WeightTrendCard`)
-- [ ] Compact top dashboard summary with the next action
+- [x] Compact top dashboard summary with the next action (`TodaySummaryCard`, `NextActionAdvisor`)
 - [ ] Coach Q&A over the user's own data; persistent coaching context in SwiftData
 - [ ] Daily commitments (accept / edit / dismiss / complete)
 - [ ] Verdict 2.0: behavior score separate from scale outcome, data confidence, change since last review
