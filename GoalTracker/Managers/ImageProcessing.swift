@@ -36,3 +36,46 @@ enum ImageProcessing {
         return rendered.jpegData(compressionQuality: quality)
     }
 }
+
+extension ImageProcessing {
+    /// Decodes a photo straight to at most `maxPixelSize` on its longest side, without first decoding it at
+    /// full size. Much cheaper than `UIImage(data:)` for thumbnails.
+    static func downsampledImage(_ data: Data, maxPixelSize: CGFloat) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: image)
+    }
+}
+
+/// Decoded progress photos kept in memory, so switching tabs and re-rendering don't decode JPEGs again.
+/// Decoding happens off the main thread. `NSCache` is thread-safe and drops entries under memory pressure.
+enum PhotoImageCache {
+    nonisolated(unsafe) private static let cache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 120
+        return cache
+    }()
+
+    static func key(for id: some Hashable, maxPixelSize: CGFloat) -> String {
+        "\(id.hashValue)-\(Int(maxPixelSize))"
+    }
+
+    static func cached(_ key: String) -> UIImage? {
+        cache.object(forKey: key as NSString)
+    }
+
+    static func load(_ data: Data, key: String, maxPixelSize: CGFloat) async -> UIImage? {
+        if let hit = cached(key) { return hit }
+        let image = await Task.detached(priority: .userInitiated) {
+            ImageProcessing.downsampledImage(data, maxPixelSize: maxPixelSize)
+        }.value
+        if let image { cache.setObject(image, forKey: key as NSString) }
+        return image
+    }
+}

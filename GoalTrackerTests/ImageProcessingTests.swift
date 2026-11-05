@@ -28,4 +28,31 @@ struct ImageProcessingTests {
     @Test func missingMetadataReturnsNil() {
         #expect(ImageProcessing.captureDate(of: jpeg(exif: nil)) == nil)
     }
+
+    private func photo(width: CGFloat, height: CGFloat) -> Data {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).jpegData(withCompressionQuality: 0.8) { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+
+    @Test func downsamplesToTheRequestedSizeKeepingAspect() throws {
+        let image = try #require(ImageProcessing.downsampledImage(photo(width: 1200, height: 1600), maxPixelSize: 300))
+        let pixels = try #require(image.cgImage)
+        #expect(pixels.height == 300)
+        #expect(pixels.width == 225)
+    }
+
+    @Test func cacheReturnsTheDecodedImage() async throws {
+        let key = PhotoImageCache.key(for: UUID(), maxPixelSize: 300)
+        #expect(PhotoImageCache.cached(key) == nil)
+        let image = try #require(await PhotoImageCache.load(photo(width: 600, height: 800), key: key, maxPixelSize: 300))
+        #expect(PhotoImageCache.cached(key) === image)
+    }
+
+    @Test func undecodableDataIsNil() {
+        #expect(ImageProcessing.downsampledImage(Data("not an image".utf8), maxPixelSize: 300) == nil)
+    }
 }

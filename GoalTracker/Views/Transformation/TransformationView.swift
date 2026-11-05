@@ -114,8 +114,8 @@ struct TransformationView: View {
                 .aspectRatio(3 / 4, contentMode: .fit)
                 .overlay {
                     ZStack {
-                        PhotoImage(photo: latest)
-                        PhotoImage(photo: thenPhoto).opacity(overlayAmount)
+                        PhotoImage(photo: latest, maxPixelSize: 1600)
+                        PhotoImage(photo: thenPhoto, maxPixelSize: 1600).opacity(overlayAmount)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -179,7 +179,7 @@ struct TransformationView: View {
 
     private func thumbnail(for photo: ProgressPhoto) -> some View {
         let role = photo == thenPhoto ? "THEN" : photo == latest ? "NOW" : nil
-        return PhotoImage(photo: photo)
+        return PhotoImage(photo: photo, maxPixelSize: 300)
             .frame(width: 64, height: 86)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay {
@@ -247,15 +247,34 @@ struct TransformationView: View {
 
 struct PhotoImage: View {
     let photo: ProgressPhoto?
+    /// Longest side to decode at, in pixels. Thumbnails need far less than the stored 1600px photo.
+    var maxPixelSize: CGFloat = 1200
+
+    @State private var loaded: UIImage?
+
+    private var cacheKey: String? {
+        photo.map { PhotoImageCache.key(for: $0.persistentModelID, maxPixelSize: maxPixelSize) }
+    }
 
     var body: some View {
-        if let photo, let image = UIImage(data: photo.imageData) {
-            Image(uiImage: image).resizable().scaledToFill()
-        } else {
-            ZStack {
+        // A cached image shows immediately; otherwise it's decoded in the background.
+        let image = cacheKey.flatMap(PhotoImageCache.cached) ?? loaded
+        ZStack {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
                 Color.white.opacity(0.05)
-                Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary)
+                if photo == nil {
+                    Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary)
+                }
             }
+        }
+        .task(id: cacheKey) {
+            guard let photo, let cacheKey else {
+                loaded = nil
+                return
+            }
+            loaded = await PhotoImageCache.load(photo.imageData, key: cacheKey, maxPixelSize: maxPixelSize)
         }
     }
 }
@@ -267,7 +286,7 @@ struct PhotoPanel: View {
     var body: some View {
         Color.clear
             .aspectRatio(3 / 4, contentMode: .fit)
-            .overlay { PhotoImage(photo: photo) }
+            .overlay { PhotoImage(photo: photo, maxPixelSize: 900) }
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.goldGradient, lineWidth: 1)
